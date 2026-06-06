@@ -262,18 +262,28 @@ local fireflies = {}
 local snowSpawnTimer = 0
 local fireflySpawnTimer = 0
 
+-- forward declarations (Luau strict: assign before first use)
+local addLog
+local showNotif
+local teleportTo
+local holdE
+local ACHIEVEMENTS
+local playCollectSound
+local playHitSound
+local playAchievementSound
+
 -- ─── MACRO SYSTEM ───
 
 local macroRecording = false
 local macroPlaying = false
 local macroActions = {}
-local macroStartTime = 0
+local _macroStartTime = 0
 
 local function startMacroRecording()
 	if macroRecording or macroPlaying then return end
 	macroRecording = true
 	macroActions = {}
-	macroStartTime = os.clock()
+	_macroStartTime = os.clock()
 	addLog("Macro recording started", "Config")
 	showNotif("Recording macro...", Color3.fromRGB(100, 180, 255))
 end
@@ -365,12 +375,6 @@ local function getMemoryMB()
 	end
 	return 0
 end
-
--- forward declarations (Luau strict: assign before first use in UI)
-local showNotif
-local playCollectSound
-local playHitSound
-local playAchievementSound
 
 -- ─── HELPERS ───
 

@@ -1,0 +1,3023 @@
+--[[
+	Brainrot Collector v3.0
+	Built on top of the v2.0 GUI — same look, more features.
+	Right Shift to open/close.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local SoundService = game:GetService("SoundService")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local VERSION = "3.1.0"
+local SAFE_ZONE_CFRAME = CFrame.new(-48.4321136, 130.746262, -26.85355, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+local MAX_BRAINROTS = 4
+local MAX_LOG = 400
+
+local brainrotNames = {
+	"1x1x1x1", "67", "Agarrini la Palini", "Alessio", "Anpali Babel", "Antonio",
+	"Aquanaut", "Bambini Crostini", "Ballerina Cappuccina", "Bambu Bambu Sahur",
+	"Bananito Bandito", "Bananita Dolphinita", "Blackhole Goat", "Brr Brr Patapim",
+	"Bunito Bunito Spinito", "Burbaloni Loliloli", "Capi Taco", "Cappuccino Assassino",
+	"Eviledon", "Dug dug dug", "Espresso Signora", "Esok Sekolah", "Dragon Gingerini",
+	"Chillin Chili", "Dragon Cannelloni", "Chef Crabracadabra", "Extinct Matteo",
+	"Los Bros", "Liril\195\172 Laril\195\160", "Las Tralaleritas", "La Karkerkar Combinasion",
+	"La Grande Combinasion", "Karkerkar Kurkur", "Job Job Job Sahur", "Guest 666",
+	"Gangster Footera", "Fragola La La La", "Fluriflura", "Los Tacoritas",
+	"Los Tralaleritos", "Matteo", "Meowl", "Money Money Puggy", "Orangutini Ananassini",
+	"Noobini Pizzanini", "Sigma Boy", "Pakrahmatmamat", "Spaghetti Tualetti",
+	"Sigma Girl", "Stoppo Luminino", "Strawberry Elefanto", "Strawberry Elephant",
+	"Swag Soda", "W or L", "Vulturino Skeletono", "Tung Tung Tung Sahur",
+	"Trulimero Trulicina", "Tuff Toucan", "Tim Cheese", "Tigrilini Watermelini",
+	"Tictac Sahur", "Swaggy Bros",
+}
+
+local RARITY_COLORS = {
+	OG = Color3.fromRGB(255, 215, 0),
+	Rare = Color3.fromRGB(80, 160, 255),
+	Common = Color3.fromRGB(160, 160, 170),
+}
+
+local LOG_COLORS = {
+	Collect = Color3.fromRGB(100, 220, 140),
+	Hit = Color3.fromRGB(100, 160, 255),
+	Error = Color3.fromRGB(255, 100, 100),
+	Info = Color3.fromRGB(160, 175, 220),
+	Config = Color3.fromRGB(200, 180, 120),
+	Record = Color3.fromRGB(255, 215, 0),
+}
+
+local SPEED_DELAYS = {
+	Insane = { tp = 0.08, hold = 0.5, after = 0.1 },
+	Fast = { tp = 0.15, hold = 0.7, after = 0.2 },
+	Normal = { tp = 0.3, hold = 1.0, after = 0.3 },
+	Careful = { tp = 0.5, hold = 1.4, after = 0.5 },
+}
+local SPEED_ORDER = { "Insane", "Fast", "Normal", "Careful" }
+
+local collectorConfig = {
+	rarityFilter = { OG = true, Rare = false, Common = false },
+	loopMode = false,
+	loopWait = 5,
+	speed = "Normal",
+	blacklist = {},
+	autoReturn = true,
+}
+
+local hitterConfig = {
+	targetMode = "All",
+	specificTargets = {},
+	skipList = {},
+	swingCount = 2,
+	cooldownTime = 0,
+}
+
+local sessionData = {
+	collected = 0,
+	bestSession = 0,
+	totalHits = 0,
+	bestHitSession = 0,
+	brainrotCounts = {},
+	rarityCounts = { OG = 0, Rare = 0, Common = 0 },
+	runsCompleted = 0,
+	hitRunsCompleted = 0,
+	sessionStart = os.clock(),
+	runHistory = {},
+	unlockedAchievements = {},
+	lastRunSpeed = "Normal",
+	speedsUsed = { Insane = false, Fast = false, Normal = true, Careful = false },
+	themesTried = { Midnight = true, Warm = false, Lavender = false, Ocean = false, Sunset = false, Forest = false },
+	collectionTimes = {},
+	hitTimes = {},
+	totalCollectionTime = 0,
+	totalHitTime = 0,
+}
+
+local proximityAlertsEnabled = false
+local proximityAlerted = {}
+
+local savedSpots = {
+	{ name = "Safe Zone", cframe = SAFE_ZONE_CFRAME },
+	{ name = "Spot 2", cframe = nil },
+	{ name = "Spot 3", cframe = nil },
+	{ name = "Spot 4", cframe = nil },
+}
+
+local logEntries = {}
+local watermarkMessages = {
+	"Brainrot Collector v3.1 — made with love ♥",
+	"Right Shift to toggle",
+	"Collect. Hit. Stay cozy.",
+	"Thanks for being here!",
+	"You are appreciated ✦",
+	"Take a breath — you got this",
+	"Built for our fans ♥",
+}
+local watermarkIndex = 1
+
+local cozyConfig = {
+	theme = "Midnight",
+	snowEnabled = true,
+	firefliesEnabled = true,
+	breatheEnabled = true,
+	confettiEnabled = true,
+	welcomeShown = false,
+	soundEnabled = true,
+	collectSoundEnabled = true,
+	hitSoundEnabled = true,
+	achievementSoundEnabled = true,
+}
+
+local moodMessages = {
+	"stay cozy, collector ♥",
+	"the brainrots can wait a sec",
+	"you're doing great out there",
+	"soft grind, big rewards",
+	"good vibes only today",
+	"your session, your pace",
+	"we're glad you're here",
+}
+
+local cozyTips = {
+	"Tip: Warm theme + fireflies = maximum cozy.",
+	"Tip: Careful speed is chill and safe.",
+	"Tip: Save teleport spots at your favorite hangouts.",
+	"Tip: Check Stats for achievements — little wins matter.",
+	"Tip: Blacklist names you never want to chase.",
+	"Tip: Proximity alerts ping you when OGs are close.",
+	"Tip: Right Shift hides the UI but keeps everything running.",
+	"Tip: Loop mode is patient — perfect for waiting on spawns.",
+}
+
+local COZY_THEMES = {
+	Midnight = {
+		frameTop = Color3.fromRGB(30, 34, 60),
+		frameMid = Color3.fromRGB(22, 25, 45),
+		frameBot = Color3.fromRGB(14, 16, 28),
+		overlay = Color3.fromRGB(0, 0, 0),
+		overlayTrans = 0.3,
+		stroke = Color3.fromRGB(100, 120, 220),
+		glow = {
+			Color3.fromRGB(100, 120, 220),
+			Color3.fromRGB(140, 100, 230),
+			Color3.fromRGB(80, 160, 220),
+		},
+		accent = Color3.fromRGB(80, 100, 180),
+	},
+	Warm = {
+		frameTop = Color3.fromRGB(55, 38, 48),
+		frameMid = Color3.fromRGB(42, 28, 36),
+		frameBot = Color3.fromRGB(28, 18, 24),
+		overlay = Color3.fromRGB(40, 20, 10),
+		overlayTrans = 0.35,
+		stroke = Color3.fromRGB(220, 140, 100),
+		glow = {
+			Color3.fromRGB(220, 140, 90),
+			Color3.fromRGB(255, 180, 120),
+			Color3.fromRGB(200, 110, 80),
+		},
+		accent = Color3.fromRGB(200, 120, 80),
+	},
+	Lavender = {
+		frameTop = Color3.fromRGB(48, 40, 68),
+		frameMid = Color3.fromRGB(36, 30, 52),
+		frameBot = Color3.fromRGB(24, 20, 36),
+		overlay = Color3.fromRGB(20, 10, 40),
+		overlayTrans = 0.32,
+		stroke = Color3.fromRGB(180, 140, 220),
+		glow = {
+			Color3.fromRGB(160, 120, 220),
+			Color3.fromRGB(200, 160, 255),
+			Color3.fromRGB(140, 100, 200),
+		},
+		accent = Color3.fromRGB(160, 130, 200),
+	},
+	Ocean = {
+		frameTop = Color3.fromRGB(25, 50, 65),
+		frameMid = Color3.fromRGB(18, 38, 50),
+		frameBot = Color3.fromRGB(12, 28, 38),
+		overlay = Color3.fromRGB(0, 20, 40),
+		overlayTrans = 0.3,
+		stroke = Color3.fromRGB(80, 180, 200),
+		glow = {
+			Color3.fromRGB(60, 160, 200),
+			Color3.fromRGB(100, 200, 220),
+			Color3.fromRGB(40, 140, 180),
+		},
+		accent = Color3.fromRGB(60, 150, 180),
+	},
+	Sunset = {
+		frameTop = Color3.fromRGB(65, 40, 35),
+		frameMid = Color3.fromRGB(50, 30, 28),
+		frameBot = Color3.fromRGB(35, 22, 20),
+		overlay = Color3.fromRGB(50, 20, 10),
+		overlayTrans = 0.35,
+		stroke = Color3.fromRGB(255, 140, 80),
+		glow = {
+			Color3.fromRGB(255, 120, 60),
+			Color3.fromRGB(255, 180, 100),
+			Color3.fromRGB(230, 100, 50),
+		},
+		accent = Color3.fromRGB(230, 110, 70),
+	},
+	Forest = {
+		frameTop = Color3.fromRGB(35, 55, 35),
+		frameMid = Color3.fromRGB(28, 42, 28),
+		frameBot = Color3.fromRGB(20, 30, 20),
+		overlay = Color3.fromRGB(10, 30, 10),
+		overlayTrans = 0.32,
+		stroke = Color3.fromRGB(100, 180, 100),
+		glow = {
+			Color3.fromRGB(80, 160, 80),
+			Color3.fromRGB(120, 200, 120),
+			Color3.fromRGB(60, 140, 60),
+		},
+		accent = Color3.fromRGB(70, 150, 70),
+	},
+}
+
+local favoriteBrainrots = {}
+local moodIndex = 1
+local tipIndex = 1
+local glowColors = {
+	COZY_THEMES.Midnight.glow[1],
+	COZY_THEMES.Midnight.glow[2],
+	COZY_THEMES.Midnight.glow[3],
+}
+local THEME_ORDER = { "Midnight", "Warm", "Lavender", "Ocean", "Sunset", "Forest" }
+
+local running = false
+local hitting = false
+local guiOpen = false
+local minimized = false
+local currentTab = 1
+local snowflakes = {}
+local fireflies = {}
+local snowSpawnTimer = 0
+local fireflySpawnTimer = 0
+
+-- ─── MACRO SYSTEM ───
+
+local macroRecording = false
+local macroPlaying = false
+local macroActions = {}
+local macroStartTime = 0
+
+local function startMacroRecording()
+	if macroRecording or macroPlaying then return end
+	macroRecording = true
+	macroActions = {}
+	macroStartTime = os.clock()
+	addLog("Macro recording started", "Config")
+	showNotif("Recording macro...", Color3.fromRGB(100, 180, 255))
+end
+
+local function stopMacroRecording()
+	if not macroRecording then return end
+	macroRecording = false
+	addLog("Macro recording stopped — " .. #macroActions .. " actions", "Config")
+	showNotif("Macro saved! " .. #macroActions .. " actions", Color3.fromRGB(100, 180, 255))
+end
+
+local function playMacro()
+	if macroPlaying or macroRecording or #macroActions == 0 then return end
+	macroPlaying = true
+	addLog("Playing macro — " .. #macroActions .. " actions", "Config")
+	showNotif("Playing macro...", Color3.fromRGB(100, 180, 255))
+	
+	task.spawn(function()
+		for i, action in ipairs(macroActions) do
+			if not macroPlaying then break end
+			task.wait(action.delay)
+			if action.type == "teleport" and action.cframe then
+				teleportTo(action.cframe)
+			elseif action.type == "holdE" then
+				holdE(action.duration or 1)
+			elseif action.type == "click" then
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+				task.wait(0.1)
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+			end
+		end
+		macroPlaying = false
+		addLog("Macro playback finished", "Config")
+		showNotif("Macro finished!", Color3.fromRGB(100, 180, 255))
+	end)
+end
+
+local function stopMacroPlayback()
+	macroPlaying = false
+	addLog("Macro playback stopped", "Config")
+	showNotif("Macro stopped", Color3.fromRGB(255, 150, 100))
+end
+
+-- ─── PERFORMANCE MONITOR ───
+
+local fpsValues = {}
+local lastFrameTime = tick()
+local currentFPS = 60
+
+local function updateFPS()
+	local now = tick()
+	local delta = now - lastFrameTime
+	lastFrameTime = now
+	currentFPS = math.floor(1 / delta)
+	
+	table.insert(fpsValues, currentFPS)
+	if #fpsValues > 60 then
+		table.remove(fpsValues, 1)
+	end
+end
+
+local function getAverageFPS()
+	if #fpsValues == 0 then return 60 end
+	local sum = 0
+	for _, v in ipairs(fpsValues) do
+		sum += v
+	end
+	return math.floor(sum / #fpsValues)
+end
+
+local function getPing()
+	local stats = game:GetService("StatsService")
+	local perfStats = stats:GetPerformanceStats()
+	for _, stat in ipairs(perfStats:GetChildren()) do
+		if stat.Name == "Ping" then
+			return math.floor(stat.Value)
+		end
+	end
+	return 0
+end
+
+local function getMemoryMB()
+	local stats = game:GetService("StatsService")
+	local perfStats = stats:GetPerformanceStats()
+	for _, stat in ipairs(perfStats:GetChildren()) do
+		if stat.Name == "DataReceiveRate" then
+			return math.floor(stat.Value / 1024 / 1024)
+		end
+	end
+	return 0
+end
+
+-- forward declarations (Luau strict: assign before first use in UI)
+local showNotif
+local playCollectSound
+local playHitSound
+local playAchievementSound
+
+-- ─── HELPERS ───
+
+local function timestamp()
+	local t = os.clock() - sessionData.sessionStart
+	local m = math.floor(t / 60) % 60
+	local s = math.floor(t) % 60
+	return string.format("%02d:%02d", m, s)
+end
+
+local function formatSessionTime()
+	local t = math.floor(os.clock() - sessionData.sessionStart)
+	local h = math.floor(t / 3600)
+	local m = math.floor((t % 3600) / 60)
+	local s = t % 60
+	if h > 0 then
+		return string.format("%d:%02d:%02d", h, m, s)
+	end
+	return string.format("%02d:%02d", m, s)
+end
+
+local function addLog(msg, logType)
+	logType = logType or "Info"
+	local color = LOG_COLORS[logType] or LOG_COLORS.Info
+	table.insert(logEntries, { text = "[" .. timestamp() .. "] " .. msg, color = color, type = logType })
+	while #logEntries > MAX_LOG do
+		table.remove(logEntries, 1)
+	end
+end
+
+local function listHas(list, value)
+	for _, v in ipairs(list) do
+		if v == value then return true end
+	end
+	return false
+end
+
+local function listRemove(list, value)
+	for i, v in ipairs(list) do
+		if v == value then
+			table.remove(list, i)
+			return true
+		end
+	end
+	return false
+end
+
+local function teleportTo(cf)
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		char.HumanoidRootPart.CFrame = cf
+		return true
+	end
+	return false
+end
+
+local function holdE(duration)
+	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+	task.wait(duration)
+	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function equipBat()
+	local bat = player.Backpack:FindFirstChild("Bat")
+		or (player.Character and player.Character:FindFirstChild("Bat"))
+	if bat and player.Character then
+		local hum = player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum:EquipTool(bat) end
+		task.wait(0.35)
+	end
+end
+
+local function equipToolByName(name)
+	local tool = player.Backpack:FindFirstChild(name)
+		or (player.Character and player.Character:FindFirstChild(name))
+	if tool and player.Character then
+		local hum = player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum:EquipTool(tool) end
+		return true
+	end
+	return false
+end
+
+local function isBrainrot(name)
+	for _, v in ipairs(brainrotNames) do
+		if v == name then return true end
+	end
+	return false
+end
+
+local function getRarity(mob)
+	local ok, rarity = pcall(function()
+		local root = mob:FindFirstChild("RootPart")
+		if not root then return nil end
+		local attach = root:FindFirstChild("OverheadAttach")
+		if not attach then return nil end
+		local overhead = attach:FindFirstChild("AnimalOverhead")
+		if not overhead then return nil end
+		local r = overhead:FindFirstChild("Rarity")
+		if r then
+			if r:IsA("StringValue") or r:IsA("ValueBase") then return r.Value end
+			if r:IsA("TextLabel") then return r.Text end
+		end
+		return nil
+	end)
+	if ok and type(rarity) == "string" then
+		local lower = rarity:lower()
+		if lower == "og" then return "OG" end
+		if lower == "rare" then return "Rare" end
+		return "Common"
+	end
+	return "Common"
+end
+
+local function shouldCollect(mob)
+	if not isBrainrot(mob.Name) then return false end
+	if listHas(collectorConfig.blacklist, mob.Name) then return false end
+	local rarity = getRarity(mob)
+	return collectorConfig.rarityFilter[rarity] == true
+end
+
+local function getWorkspaceTargets()
+	local targets = {}
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj:IsA("Model")
+			and obj.Archivable == false
+			and obj ~= player.Character
+			and obj:FindFirstChildOfClass("Humanoid")
+			and obj:FindFirstChild("HumanoidRootPart")
+		then
+			if not listHas(hitterConfig.skipList, obj.Name) then
+				table.insert(targets, obj)
+			end
+		end
+	end
+	return targets
+end
+
+local function resolveHitTargets()
+	local all = getWorkspaceTargets()
+	if hitterConfig.targetMode == "All" then
+		return all
+	elseif hitterConfig.targetMode == "Random" then
+		if #all == 0 then return {} end
+		return { all[math.random(1, #all)] }
+	elseif hitterConfig.targetMode == "Specific" then
+		local picked = {}
+		for _, t in ipairs(all) do
+			if listHas(hitterConfig.specificTargets, t.Name) then
+				table.insert(picked, t)
+			end
+		end
+		return picked
+	end
+	return all
+end
+
+local function animateCounter(label, fromVal, toVal, prefix, suffix)
+	prefix = prefix or ""
+	suffix = suffix or ""
+	local steps = math.min(math.abs(toVal - fromVal), 20)
+	if steps <= 0 then
+		label.Text = prefix .. toVal .. suffix
+		return
+	end
+	local step = (toVal - fromVal) / steps
+	task.spawn(function()
+		for i = 1, steps do
+			local v = math.floor(fromVal + step * i + 0.5)
+			label.Text = prefix .. v .. suffix
+			task.wait(0.03)
+		end
+		label.Text = prefix .. toVal .. suffix
+	end)
+end
+
+local function rippleButton(btn)
+	local ripple = Instance.new("Frame")
+	ripple.Size = UDim2.new(0, 10, 0, 10)
+	ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+	ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+	ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	ripple.BackgroundTransparency = 0.6
+	ripple.BorderSizePixel = 0
+	ripple.ZIndex = btn.ZIndex + 2
+	ripple.Parent = btn
+	Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+	TweenService:Create(ripple, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.new(1.5, 0, 2, 0),
+		BackgroundTransparency = 1,
+	}):Play()
+	task.delay(0.45, function()
+		if ripple.Parent then ripple:Destroy() end
+	end)
+end
+
+-- ─── SOUND SYSTEM ───
+
+local function playCollectSound()
+	if not cozyConfig.soundEnabled or not cozyConfig.collectSoundEnabled then return end
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://6895079853"
+	sound.Volume = 0.3
+	sound.Parent = SoundService
+	sound:Play()
+	sound.Ended:Connect(function()
+		sound:Destroy()
+	end)
+end
+
+local function playHitSound()
+	if not cozyConfig.soundEnabled or not cozyConfig.hitSoundEnabled then return end
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://6918360534"
+	sound.Volume = 0.25
+	sound.Parent = SoundService
+	sound:Play()
+	sound.Ended:Connect(function()
+		sound:Destroy()
+	end)
+end
+
+local function playAchievementSound()
+	if not cozyConfig.soundEnabled or not cozyConfig.achievementSoundEnabled then return end
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://6895080276"
+	sound.Volume = 0.4
+	sound.Parent = SoundService
+	sound:Play()
+	sound.Ended:Connect(function()
+		sound:Destroy()
+	end)
+end
+
+-- ─── BRAINROT METADATA + ACHIEVEMENTS (defined before UI uses them) ───
+
+local BRAINROT_META = {
+	["1x1x1x1"] = { tier = "S", group = "Legends", note = "Classic OG chase target" },
+	["67"] = { tier = "S", group = "Legends", note = "Fan favorite OG" },
+	["Agarrini la Palini"] = { tier = "A", group = "Italian", note = "High demand OG" },
+	["Alessio"] = { tier = "B", group = "Italian", note = "Steady collector pick" },
+	["Anpali Babel"] = { tier = "B", group = "Italian", note = "Solid rare find" },
+	["Antonio"] = { tier = "C", group = "Italian", note = "Common rotation mob" },
+	["Aquanaut"] = { tier = "B", group = "Aquatic", note = "Water-themed brainrot" },
+	["Bambini Crostini"] = { tier = "A", group = "Italian", note = "Popular OG variant" },
+	["Ballerina Cappuccina"] = { tier = "A", group = "Coffee", note = "Dance meme OG" },
+	["Bambu Bambu Sahur"] = { tier = "B", group = "Meme", note = "Sahur family line" },
+	["Bananito Bandito"] = { tier = "B", group = "Fruit", note = "Banana outlaw" },
+	["Bananita Dolphinita"] = { tier = "B", group = "Fruit", note = "Dolphin banana fusion" },
+	["Blackhole Goat"] = { tier = "S", group = "Cosmic", note = "Space goat OG" },
+	["Brr Brr Patapim"] = { tier = "A", group = "Meme", note = "Sound meme classic" },
+	["Bunito Bunito Spinito"] = { tier = "B", group = "Spin", note = "Spinner variant" },
+	["Burbaloni Loliloli"] = { tier = "B", group = "Meme", note = "Chaotic name energy" },
+	["Capi Taco"] = { tier = "B", group = "Food", note = "Taco captain" },
+	["Cappuccino Assassino"] = { tier = "A", group = "Coffee", note = "Assassin barista" },
+	["Eviledon"] = { tier = "S", group = "Dark", note = "Evil edition chase" },
+	["Dug dug dug"] = { tier = "B", group = "Meme", note = "Digging sound meme" },
+	["Espresso Signora"] = { tier = "A", group = "Coffee", note = "Lady espresso" },
+	["Esok Sekolah"] = { tier = "B", group = "School", note = "School meme line" },
+	["Dragon Gingerini"] = { tier = "A", group = "Dragon", note = "Ginger dragon" },
+	["Chillin Chili"] = { tier = "B", group = "Food", note = "Cool pepper" },
+	["Dragon Cannelloni"] = { tier = "A", group = "Dragon", note = "Pasta dragon" },
+	["Chef Crabracadabra"] = { tier = "B", group = "Food", note = "Magic chef crab" },
+	["Extinct Matteo"] = { tier = "S", group = "Matteo", note = "Extinct variant OG" },
+	["Los Bros"] = { tier = "A", group = "Squad", note = "Brother squad" },
+	["Liril\195\172 Laril\195\160"] = { tier = "A", group = "Meme", note = "Iconic lirilà line" },
+	["Las Tralaleritas"] = { tier = "B", group = "Meme", note = "Tralalero family" },
+	["La Karkerkar Combinasion"] = { tier = "A", group = "Combo", note = "Combination boss" },
+	["La Grande Combinasion"] = { tier = "S", group = "Combo", note = "Grande combo OG" },
+	["Karkerkar Kurkur"] = { tier = "B", group = "Combo", note = "Kurkur variant" },
+	["Job Job Job Sahur"] = { tier = "B", group = "Sahur", note = "Working sahur" },
+	["Guest 666"] = { tier = "S", group = "Guest", note = "Cursed guest OG" },
+	["Gangster Footera"] = { tier = "B", group = "Gang", note = "Street footer" },
+	["Fragola La La La"] = { tier = "B", group = "Fruit", note = "Strawberry singer" },
+	["Fluriflura"] = { tier = "B", group = "Meme", note = "Flutter meme" },
+	["Los Tacoritas"] = { tier = "B", group = "Food", note = "Taco squad" },
+	["Los Tralaleritos"] = { tier = "A", group = "Meme", note = "Mini tralalero crew" },
+	["Matteo"] = { tier = "S", group = "Matteo", note = "Core Matteo OG" },
+	["Meowl"] = { tier = "A", group = "Cat", note = "Meow owl hybrid" },
+	["Money Money Puggy"] = { tier = "B", group = "Rich", note = "Cash pug" },
+	["Orangutini Ananassini"] = { tier = "A", group = "Fruit", note = "Orangutan pineapple" },
+	["Noobini Pizzanini"] = { tier = "B", group = "Food", note = "Noob pizza" },
+	["Sigma Boy"] = { tier = "A", group = "Sigma", note = "Sigma male meme" },
+	["Pakrahmatmamat"] = { tier = "B", group = "Meme", note = "Long name classic" },
+	["Spaghetti Tualetti"] = { tier = "B", group = "Food", note = "Bathroom pasta" },
+	["Sigma Girl"] = { tier = "A", group = "Sigma", note = "Sigma female meme" },
+	["Stoppo Luminino"] = { tier = "B", group = "Light", note = "Stop light boy" },
+	["Strawberry Elefanto"] = { tier = "B", group = "Fruit", note = "Berry elephant" },
+	["Strawberry Elephant"] = { tier = "B", group = "Fruit", note = "Alt spelling elephant" },
+	["Swag Soda"] = { tier = "B", group = "Drink", note = "Swag fizzy drink" },
+	["W or L"] = { tier = "A", group = "Meme", note = "Win or loss meme" },
+	["Vulturino Skeletono"] = { tier = "B", group = "Spooky", note = "Skeleton vulture" },
+	["Tung Tung Tung Sahur"] = { tier = "A", group = "Sahur", note = "Drum sahur OG" },
+	["Trulimero Trulicina"] = { tier = "B", group = "Meme", note = "Tralalero cousin" },
+	["Tuff Toucan"] = { tier = "B", group = "Bird", note = "Tough toucan" },
+	["Tim Cheese"] = { tier = "B", group = "Food", note = "Cheese tim" },
+	["Tigrilini Watermelini"] = { tier = "B", group = "Fruit", note = "Tiger watermelon" },
+	["Tictac Sahur"] = { tier = "B", group = "Sahur", note = "Clock sahur" },
+	["Swaggy Bros"] = { tier = "A", group = "Squad", note = "Swag brother duo" },
+}
+
+local function getBrainrotMeta(name)
+	return BRAINROT_META[name] or { tier = "?", group = "Unknown", note = "No metadata yet" }
+end
+
+local ACHIEVEMENTS = {
+	{ id = "first_collect", title = "First Catch", desc = "Collect your first brainrot", check = function() return sessionData.collected >= 1 end },
+	{ id = "collect_5", title = "Getting Started", desc = "Collect 5 brainrots", check = function() return sessionData.collected >= 5 end },
+	{ id = "collect_10", title = "Dedicated", desc = "Collect 10 brainrots", check = function() return sessionData.collected >= 10 end },
+	{ id = "collect_25", title = "Grinder", desc = "Collect 25 brainrots", check = function() return sessionData.collected >= 25 end },
+	{ id = "collect_50", title = "No Life", desc = "Collect 50 brainrots", check = function() return sessionData.collected >= 50 end },
+	{ id = "collect_100", title = "Legend", desc = "Collect 100 brainrots total", check = function() return sessionData.collected >= 100 end },
+	{ id = "collect_250", title = "Mythic", desc = "Collect 250 brainrots total", check = function() return sessionData.collected >= 250 end },
+	{ id = "collect_500", title = "Immortal", desc = "Collect 500 brainrots total", check = function() return sessionData.collected >= 500 end },
+	{ id = "best_4", title = "Perfect Run", desc = "Hit 4 OGs in one session best", check = function() return sessionData.bestSession >= 4 end },
+	{ id = "best_8", title = "Godlike Run", desc = "Hit 8 OGs in one session best", check = function() return sessionData.bestSession >= 8 end },
+	{ id = "best_12", title = "Impossible Run", desc = "Hit 12 OGs in one session best", check = function() return sessionData.bestSession >= 12 end },
+	{ id = "og_hunter", title = "OG Hunter", desc = "Collect 10 OGs total", check = function() return (sessionData.rarityCounts.OG or 0) >= 10 end },
+	{ id = "og_master", title = "OG Master", desc = "Collect 25 OGs total", check = function() return (sessionData.rarityCounts.OG or 0) >= 25 end },
+	{ id = "og_legend", title = "OG Legend", desc = "Collect 50 OGs total", check = function() return (sessionData.rarityCounts.OG or 0) >= 50 end },
+	{ id = "rare_find", title = "Rare Spotter", desc = "Collect 5 Rare brainrots", check = function() return (sessionData.rarityCounts.Rare or 0) >= 5 end },
+	{ id = "rare_master", title = "Rare Master", desc = "Collect 15 Rare brainrots", check = function() return (sessionData.rarityCounts.Rare or 0) >= 15 end },
+	{ id = "rare_legend", title = "Rare Legend", desc = "Collect 30 Rare brainrots", check = function() return (sessionData.rarityCounts.Rare or 0) >= 30 end },
+	{ id = "common_collector", title = "Common Ground", desc = "Collect 20 Common brainrots", check = function() return (sessionData.rarityCounts.Common or 0) >= 20 end },
+	{ id = "first_hit", title = "First Swing", desc = "Land your first hit", check = function() return sessionData.totalHits >= 1 end },
+	{ id = "hit_20", title = "Bully", desc = "Land 20 total hits", check = function() return sessionData.totalHits >= 20 end },
+	{ id = "hit_100", title = "Menace", desc = "Land 100 total hits", check = function() return sessionData.totalHits >= 100 end },
+	{ id = "hit_250", title = "Destroyer", desc = "Land 250 total hits", check = function() return sessionData.totalHits >= 250 end },
+	{ id = "hit_500", title = "Annihilator", desc = "Land 500 total hits", check = function() return sessionData.totalHits >= 500 end },
+	{ id = "hit_session_10", title = "Combo King", desc = "10 swings in one hit run", check = function() return sessionData.bestHitSession >= 10 end },
+	{ id = "hit_session_25", title = "Combo God", desc = "25 swings in one hit run", check = function() return sessionData.bestHitSession >= 25 end },
+	{ id = "hit_session_50", title = "Combo Legend", desc = "50 swings in one hit run", check = function() return sessionData.bestHitSession >= 50 end },
+	{ id = "runs_5", title = "Routine", desc = "Complete 5 collection runs", check = function() return sessionData.runsCompleted >= 5 end },
+	{ id = "runs_20", title = "Veteran", desc = "Complete 20 collection runs", check = function() return sessionData.runsCompleted >= 20 end },
+	{ id = "runs_50", title = "Elite", desc = "Complete 50 collection runs", check = function() return sessionData.runsCompleted >= 50 end },
+	{ id = "runs_100", title = "Marathon", desc = "Complete 100 collection runs", check = function() return sessionData.runsCompleted >= 100 end },
+	{ id = "hit_runs_10", title = "Bully Routine", desc = "Complete 10 hit runs", check = function() return sessionData.hitRunsCompleted >= 10 end },
+	{ id = "hit_runs_25", title = "Bully Veteran", desc = "Complete 25 hit runs", check = function() return sessionData.hitRunsCompleted >= 25 end },
+	{ id = "hit_runs_50", title = "Bully Elite", desc = "Complete 50 hit runs", check = function() return sessionData.hitRunsCompleted >= 50 end },
+	{ id = "unique_10", title = "Variety Pack", desc = "Collect 10 unique brainrot names", check = function()
+		local n = 0
+		for _ in pairs(sessionData.brainrotCounts) do n += 1 end
+		return n >= 10
+	end },
+	{ id = "unique_30", title = "Dex Master", desc = "Collect 30 unique brainrot names", check = function()
+		local n = 0
+		for _ in pairs(sessionData.brainrotCounts) do n += 1 end
+		return n >= 30
+	end },
+	{ id = "unique_50", title = "Dex Legend", desc = "Collect 50 unique brainrot names", check = function()
+		local n = 0
+		for _ in pairs(sessionData.brainrotCounts) do n += 1 end
+		return n >= 50
+	end },
+	{ id = "unique_all", title = "Completionist", desc = "Collect every brainrot name", check = function()
+		local n = 0
+		for _ in pairs(sessionData.brainrotCounts) do n += 1 end
+		return n >= #brainrotNames
+	end },
+	{ id = "loop_user", title = "Loop Demon", desc = "Use loop mode and finish a run", check = function() return collectorConfig.loopMode and sessionData.runsCompleted >= 1 end },
+	{ id = "loop_master", title = "Loop Master", desc = "Complete 10 runs in loop mode", check = function()
+		return collectorConfig.loopMode and sessionData.runsCompleted >= 10
+	end },
+	{ id = "speed_insane", title = "Chaos Mode", desc = "Complete a run on Insane speed", check = function() return sessionData.lastRunSpeed == "Insane" end },
+	{ id = "speed_careful", title = "Patient", desc = "Complete a run on Careful speed", check = function() return sessionData.lastRunSpeed == "Careful" end },
+	{ id = "speed_all", title = "Speed Demon", desc = "Complete runs on all speeds", check = function()
+		return sessionData.speedsUsed and sessionData.speedsUsed.Insane and sessionData.speedsUsed.Fast and sessionData.speedsUsed.Normal and sessionData.speedsUsed.Careful
+	end },
+	{ id = "blacklist_user", title = "Picky Collector", desc = "Add something to blacklist", check = function() return #collectorConfig.blacklist >= 1 end },
+	{ id = "blacklist_5", title = "Very Picky", desc = "Add 5 items to blacklist", check = function() return #collectorConfig.blacklist >= 5 end },
+	{ id = "teleport_saver", title = "Cartographer", desc = "Save a custom teleport spot", check = function()
+		return savedSpots[2].cframe ~= nil or savedSpots[3].cframe ~= nil or savedSpots[4].cframe ~= nil
+	end },
+	{ id = "teleport_all", title = "Explorer", desc = "Save all 3 custom spots", check = function()
+		return savedSpots[2].cframe ~= nil and savedSpots[3].cframe ~= nil and savedSpots[4].cframe ~= nil
+	end },
+	{ id = "favorite_5", title = "Fan Club", desc = "Favorite 5 brainrots", check = function() return #favoriteBrainrots >= 5 end },
+	{ id = "favorite_10", title = "Super Fan", desc = "Favorite 10 brainrots", check = function() return #favoriteBrainrots >= 10 end },
+	{ id = "theme_user", title = "Artistic", desc = "Change the theme", check = function() return cozyConfig.theme ~= "Midnight" end },
+	{ id = "theme_all", title = "Theme Master", desc = "Try all themes", check = function()
+		return sessionData.themesTried and sessionData.themesTried.Midnight and sessionData.themesTried.Warm and sessionData.themesTried.Lavender
+	end },
+	{ id = "session_1hr", title = "Dedicated", desc = "Play for 1 hour in one session", check = function()
+		return (os.clock() - sessionData.sessionStart) >= 3600
+	end },
+	{ id = "session_3hr", title = "Committed", desc = "Play for 3 hours in one session", check = function()
+		return (os.clock() - sessionData.sessionStart) >= 10800
+	end },
+	{ id = "achievement_10", title = "Achiever", desc = "Unlock 10 achievements", check = function()
+		local n = 0
+		for _ in pairs(sessionData.unlockedAchievements) do n += 1 end
+		return n >= 10
+	end },
+	{ id = "achievement_25", title = "Overachiever", desc = "Unlock 25 achievements", check = function()
+		local n = 0
+		for _ in pairs(sessionData.unlockedAchievements) do n += 1 end
+		return n >= 25
+	end },
+	{ id = "achievement_all", title = "Perfectionist", desc = "Unlock all achievements", check = function()
+		local n = 0
+		for _ in pairs(sessionData.unlockedAchievements) do n += 1 end
+		return n >= #ACHIEVEMENTS
+	end },
+	{ id = "confetti_user", title = "Party Time", desc = "Enable confetti effects", check = function() return cozyConfig.confettiEnabled end },
+	{ id = "snow_user", title = "Winter Vibes", desc = "Enable snow effects", check = function() return cozyConfig.snowEnabled end },
+	{ id = "firefly_user", title = "Summer Vibes", desc = "Enable firefly effects", check = function() return cozyConfig.firefliesEnabled end },
+	{ id = "all_effects", title = "Full Effects", desc = "Enable all visual effects", check = function()
+		return cozyConfig.confettiEnabled and cozyConfig.snowEnabled and cozyConfig.firefliesEnabled and cozyConfig.breatheEnabled
+	end },
+}
+
+local function checkAchievements()
+	for _, ach in ipairs(ACHIEVEMENTS) do
+		if not sessionData.unlockedAchievements[ach.id] then
+			local ok, passed = pcall(ach.check)
+			if ok and passed then
+				sessionData.unlockedAchievements[ach.id] = true
+				addLog("Achievement unlocked: " .. ach.title, "Record")
+				showNotif("Achievement: " .. ach.title, Color3.fromRGB(255, 215, 0))
+				playAchievementSound()
+			end
+		end
+	end
+end
+
+local function addRunHistory(kind, summary)
+	table.insert(sessionData.runHistory, 1, "[" .. timestamp() .. "] " .. kind .. " — " .. summary)
+	while #sessionData.runHistory > 25 do
+		table.remove(sessionData.runHistory)
+	end
+end
+
+-- ─── BACKUP/RESTORE SYSTEM ───
+
+local function serializeConfig()
+	return HttpService:JSONEncode({
+		collectorConfig = collectorConfig,
+		hitterConfig = hitterConfig,
+		cozyConfig = cozyConfig,
+		savedSpots = savedSpots,
+		favoriteBrainrots = favoriteBrainrots,
+	})
+end
+
+local function serializeStats()
+	return HttpService:JSONEncode({
+		sessionData = sessionData,
+	})
+end
+
+local function deserializeConfig(jsonStr)
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(jsonStr)
+	end)
+	if ok and data then
+		if data.collectorConfig then
+			for k, v in pairs(data.collectorConfig) do
+				collectorConfig[k] = v
+			end
+		end
+		if data.hitterConfig then
+			for k, v in pairs(data.hitterConfig) do
+				hitterConfig[k] = v
+			end
+		end
+		if data.cozyConfig then
+			for k, v in pairs(data.cozyConfig) do
+				cozyConfig[k] = v
+			end
+		end
+		if data.savedSpots then
+			for i, spot in ipairs(data.savedSpots) do
+				if savedSpots[i] then
+					savedSpots[i].name = spot.name
+					savedSpots[i].cframe = spot.cframe
+				end
+			end
+		end
+		if data.favoriteBrainrots then
+			favoriteBrainrots = data.favoriteBrainrots
+		end
+		return true
+	end
+	return false
+end
+
+local function deserializeStats(jsonStr)
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(jsonStr)
+	end)
+	if ok and data and data.sessionData then
+		for k, v in pairs(data.sessionData) do
+			sessionData[k] = v
+		end
+		return true
+	end
+	return false
+end
+
+local function copyToClipboard(text)
+	local clipboard = game:GetService("GuiService")
+	clipboard:SetClipboard(text)
+end
+
+local function getFromClipboard()
+	local clipboard = game:GetService("GuiService")
+	return clipboard:GetClipboard()
+end
+
+-- ─── SCREEN GUI ───
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BrainrotCollector"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = playerGui
+
+local overlay = Instance.new("Frame")
+overlay.Size = UDim2.new(1, 0, 1, 0)
+overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+overlay.BackgroundTransparency = 0.3
+overlay.BorderSizePixel = 0
+overlay.ZIndex = 1
+overlay.Visible = false
+overlay.Parent = screenGui
+
+local snowContainer = Instance.new("Frame")
+snowContainer.Size = UDim2.new(1, 0, 1, 0)
+snowContainer.BackgroundTransparency = 1
+snowContainer.BorderSizePixel = 0
+snowContainer.ZIndex = 2
+snowContainer.Visible = false
+snowContainer.Parent = screenGui
+
+local fireflyContainer = Instance.new("Frame")
+fireflyContainer.Size = UDim2.new(1, 0, 1, 0)
+fireflyContainer.BackgroundTransparency = 1
+fireflyContainer.BorderSizePixel = 0
+fireflyContainer.ZIndex = 2
+fireflyContainer.Visible = false
+fireflyContainer.Parent = screenGui
+
+local welcomeCard = Instance.new("Frame")
+welcomeCard.Size = UDim2.new(0, 260, 0, 70)
+welcomeCard.Position = UDim2.new(0.5, -130, 0.35, 0)
+welcomeCard.BackgroundColor3 = Color3.fromRGB(22, 25, 42)
+welcomeCard.BackgroundTransparency = 0.05
+welcomeCard.BorderSizePixel = 0
+welcomeCard.Visible = false
+welcomeCard.ZIndex = 30
+welcomeCard.Parent = screenGui
+Instance.new("UICorner", welcomeCard).CornerRadius = UDim.new(0, 10)
+local welcomeStroke = Instance.new("UIStroke", welcomeCard)
+welcomeStroke.Color = Color3.fromRGB(180, 140, 220)
+welcomeStroke.Thickness = 1.5
+local welcomeText = Instance.new("TextLabel", welcomeCard)
+welcomeText.Size = UDim2.new(1, -16, 1, 0)
+welcomeText.Position = UDim2.new(0, 8, 0, 0)
+welcomeText.BackgroundTransparency = 1
+welcomeText.Text = "welcome back ♥\nstay cozy out there"
+welcomeText.TextColor3 = Color3.fromRGB(220, 210, 255)
+welcomeText.TextSize = 12
+welcomeText.Font = Enum.Font.GothamBold
+welcomeText.TextWrapped = true
+
+local notifContainer = Instance.new("Frame")
+notifContainer.Size = UDim2.new(0, 240, 1, 0)
+notifContainer.Position = UDim2.new(1, -250, 0, 10)
+notifContainer.BackgroundTransparency = 1
+notifContainer.BorderSizePixel = 0
+notifContainer.ZIndex = 20
+notifContainer.Parent = screenGui
+
+local notifCount = 0
+showNotif = function(msg, color)
+	color = color or Color3.fromRGB(100, 120, 220)
+	notifCount += 1
+	local yOffset = (notifCount - 1) * 46
+
+	local notif = Instance.new("Frame", notifContainer)
+	notif.Size = UDim2.new(1, 0, 0, 38)
+	notif.Position = UDim2.new(1, 0, 0, yOffset)
+	notif.BackgroundColor3 = Color3.fromRGB(18, 20, 35)
+	notif.BackgroundTransparency = 0.1
+	notif.BorderSizePixel = 0
+	notif.ZIndex = 20
+	Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+	local ns = Instance.new("UIStroke", notif)
+	ns.Color = color
+	ns.Thickness = 1.5
+
+	local nl = Instance.new("TextLabel", notif)
+	nl.Size = UDim2.new(1, -10, 1, 0)
+	nl.Position = UDim2.new(0, 8, 0, 0)
+	nl.BackgroundTransparency = 1
+	nl.Text = msg
+	nl.TextColor3 = Color3.fromRGB(210, 220, 255)
+	nl.TextSize = 11
+	nl.Font = Enum.Font.GothamBold
+	nl.TextXAlignment = Enum.TextXAlignment.Left
+	nl.TextWrapped = true
+	nl.ZIndex = 21
+
+	TweenService:Create(notif, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, yOffset),
+	}):Play()
+
+	task.delay(2.8, function()
+		TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.new(1, 0, 0, yOffset),
+		}):Play()
+		task.wait(0.35)
+		notif:Destroy()
+		notifCount -= 1
+	end)
+end
+
+-- ─── MAIN FRAME ───
+
+local FRAME_W = 360
+local FRAME_H = 400
+local FULL_H = FRAME_H
+local MINI_H = 44
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, FRAME_W, 0, FRAME_H)
+frame.Position = UDim2.new(0.5, -FRAME_W / 2, 0.5, -FRAME_H / 2)
+frame.BackgroundColor3 = Color3.fromRGB(18, 20, 35)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.ZIndex = 3
+frame.Visible = false
+frame.ClipsDescendants = true
+frame.Parent = screenGui
+
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local frameStroke = Instance.new("UIStroke", frame)
+frameStroke.Color = Color3.fromRGB(100, 120, 220)
+frameStroke.Thickness = 2
+
+local frameGrad = Instance.new("UIGradient", frame)
+frameGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 34, 60)),
+	ColorSequenceKeypoint.new(0.25, Color3.fromRGB(22, 25, 45)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 16, 28)),
+})
+frameGrad.Rotation = 90
+
+-- ─── TITLE ROW ───
+
+local titleLabel = Instance.new("TextLabel", frame)
+titleLabel.Size = UDim2.new(1, -80, 0, 42)
+titleLabel.Position = UDim2.new(0, 14, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Brainrot Collector"
+titleLabel.TextColor3 = Color3.fromRGB(210, 220, 255)
+titleLabel.TextSize = 15
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.ZIndex = 4
+titleLabel.ClipsDescendants = true
+
+local shimmer = Instance.new("Frame", titleLabel)
+shimmer.Size = UDim2.new(0.4, 0, 1, 0)
+shimmer.Position = UDim2.new(-0.4, 0, 0, 0)
+shimmer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+shimmer.BackgroundTransparency = 0.82
+shimmer.BorderSizePixel = 0
+shimmer.ZIndex = 5
+local shimGrad = Instance.new("UIGradient", shimmer)
+shimGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(0.5, 0.6),
+	NumberSequenceKeypoint.new(1, 1),
+})
+shimGrad.Rotation = 15
+
+local minBtn = Instance.new("TextButton", frame)
+minBtn.Size = UDim2.new(0, 28, 0, 28)
+minBtn.Position = UDim2.new(1, -68, 0, 7)
+minBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 140)
+minBtn.Text = "-"
+minBtn.TextColor3 = Color3.fromRGB(200, 220, 255)
+minBtn.TextSize = 16
+minBtn.Font = Enum.Font.GothamBold
+minBtn.BorderSizePixel = 0
+minBtn.ZIndex = 5
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
+
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -36, 0, 7)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 12
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.BorderSizePixel = 0
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+local accentLine = Instance.new("Frame", frame)
+accentLine.Size = UDim2.new(1, -24, 0, 1)
+accentLine.Position = UDim2.new(0, 12, 0, 42)
+accentLine.BackgroundColor3 = Color3.fromRGB(80, 100, 180)
+accentLine.BackgroundTransparency = 0.5
+accentLine.BorderSizePixel = 0
+accentLine.ZIndex = 4
+
+-- ─── TAB BAR ───
+
+local TAB_NAMES = { "Collector", "Hitter", "Log", "Utility", "Stats", "Analytics" }
+local TAB_COLORS = {
+	Color3.fromRGB(50, 130, 75),
+	Color3.fromRGB(55, 80, 170),
+	Color3.fromRGB(130, 90, 40),
+	Color3.fromRGB(100, 50, 140),
+	Color3.fromRGB(180, 130, 40),
+	Color3.fromRGB(70, 140, 160),
+}
+local tabButtons = {}
+local tabW = (FRAME_W - 12) / #TAB_NAMES
+
+for i, name in ipairs(TAB_NAMES) do
+	local tb = Instance.new("TextButton", frame)
+	tb.Size = UDim2.new(0, tabW - 3, 0, 24)
+	tb.Position = UDim2.new(0, 6 + (i - 1) * tabW, 0, 48)
+	tb.BackgroundColor3 = Color3.fromRGB(28, 35, 65)
+	tb.Text = name
+	tb.TextColor3 = Color3.fromRGB(140, 155, 200)
+	tb.TextSize = 10
+	tb.Font = Enum.Font.GothamBold
+	tb.BorderSizePixel = 0
+	tb.ZIndex = 4
+	Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 5)
+	tabButtons[i] = tb
+end
+
+local tabLine2 = Instance.new("Frame", frame)
+tabLine2.Size = UDim2.new(1, -24, 0, 1)
+tabLine2.Position = UDim2.new(0, 12, 0, 76)
+tabLine2.BackgroundColor3 = Color3.fromRGB(60, 70, 120)
+tabLine2.BackgroundTransparency = 0.5
+tabLine2.BorderSizePixel = 0
+tabLine2.ZIndex = 4
+
+local moodLabel = Instance.new("TextLabel", frame)
+moodLabel.Size = UDim2.new(1, -20, 0, 12)
+moodLabel.Position = UDim2.new(0, 14, 0, 30)
+moodLabel.BackgroundTransparency = 1
+moodLabel.Text = moodMessages[moodIndex]
+moodLabel.TextColor3 = Color3.fromRGB(140, 160, 200)
+moodLabel.TextSize = 9
+moodLabel.Font = Enum.Font.Gotham
+moodLabel.TextXAlignment = Enum.TextXAlignment.Left
+moodLabel.ZIndex = 4
+
+local function applyCozyTheme(themeName)
+	local theme = COZY_THEMES[themeName]
+	if not theme then return end
+	cozyConfig.theme = themeName
+	sessionData.themesTried[themeName] = true
+	frameGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, theme.frameTop),
+		ColorSequenceKeypoint.new(0.25, theme.frameMid),
+		ColorSequenceKeypoint.new(1, theme.frameBot),
+	})
+	overlay.BackgroundColor3 = theme.overlay
+	overlay.BackgroundTransparency = theme.overlayTrans
+	frameStroke.Color = theme.stroke
+	accentLine.BackgroundColor3 = theme.accent
+	tabLine2.BackgroundColor3 = theme.accent
+	glowColors[1] = theme.glow[1]
+	glowColors[2] = theme.glow[2]
+	glowColors[3] = theme.glow[3]
+	checkAchievements()
+end
+
+local function spawnConfetti()
+	if not cozyConfig.confettiEnabled then return end
+	for _ = 1, 12 do
+		local piece = Instance.new("Frame", screenGui)
+		piece.Size = UDim2.new(0, math.random(4, 8), 0, math.random(4, 8))
+		piece.Position = UDim2.new(0.5, math.random(-80, 80), 0.5, math.random(-40, 40))
+		piece.BackgroundColor3 = Color3.fromRGB(math.random(180, 255), math.random(140, 220), math.random(100, 200))
+		piece.BorderSizePixel = 0
+		piece.ZIndex = 25
+		Instance.new("UICorner", piece).CornerRadius = UDim.new(0, 2)
+		local goal = UDim2.new(
+			piece.Position.X.Scale,
+			piece.Position.X.Offset + math.random(-60, 60),
+			piece.Position.Y.Scale + 0.15,
+			piece.Position.Y.Offset + math.random(40, 100)
+		)
+		TweenService:Create(piece, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = goal,
+			BackgroundTransparency = 1,
+		}):Play()
+		task.delay(0.95, function()
+			if piece.Parent then piece:Destroy() end
+		end)
+	end
+end
+
+local panelContainer = Instance.new("Frame", frame)
+panelContainer.Size = UDim2.new(1, 0, 1, -98)
+panelContainer.Position = UDim2.new(0, 0, 0, 78)
+panelContainer.BackgroundTransparency = 1
+panelContainer.ClipsDescendants = true
+panelContainer.ZIndex = 4
+
+local function makePanel()
+	local p = Instance.new("Frame", panelContainer)
+	p.Size = UDim2.new(1, 0, 1, 0)
+	p.Position = UDim2.new(1, 0, 0, 0)
+	p.BackgroundTransparency = 1
+	p.ZIndex = 4
+	return p
+end
+
+local function makeScrollPanel(parent, topPad)
+	local scroll = Instance.new("ScrollingFrame", parent)
+	scroll.Size = UDim2.new(1, 0, 1, 0)
+	scroll.Position = UDim2.new(0, 0, 0, 0)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 4
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 100, 180)
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ZIndex = 5
+	local layout = Instance.new("UIListLayout", scroll)
+	layout.Padding = UDim.new(0, 4)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	local pad = Instance.new("UIPadding", scroll)
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.PaddingRight = UDim.new(0, 10)
+	pad.PaddingTop = UDim.new(0, topPad or 6)
+	pad.PaddingBottom = UDim.new(0, 10)
+	return scroll, layout
+end
+
+local function makeRowLabel(scroll, text, color, height, order)
+	local lbl = Instance.new("TextLabel", scroll)
+	lbl.Size = UDim2.new(1, 0, 0, height or 18)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = text
+	lbl.TextColor3 = color or Color3.fromRGB(160, 175, 230)
+	lbl.TextSize = 11
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.LayoutOrder = order or 0
+	lbl.ZIndex = 6
+	return lbl
+end
+
+local function makeActionBtn(scroll, text, color, height, order)
+	local btn = Instance.new("TextButton", scroll)
+	btn.Size = UDim2.new(1, 0, 0, height or 30)
+	btn.BackgroundColor3 = color or Color3.fromRGB(40, 60, 100)
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(220, 230, 255)
+	btn.TextSize = 11
+	btn.Font = Enum.Font.GothamBold
+	btn.BorderSizePixel = 0
+	btn.LayoutOrder = order or 0
+	btn.ZIndex = 6
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	return btn
+end
+
+local function makeToggleBtn(scroll, text, on, onColor, offColor, order)
+	local btn = makeActionBtn(scroll, text .. ": " .. (on and "ON" or "OFF"), on and onColor or offColor, 26, order)
+	return btn
+end
+
+-- ─── COLLECTOR PANEL ───
+
+local collectPanel = makePanel()
+local collectScroll = makeScrollPanel(collectPanel, 4)
+
+local statusLabel = makeRowLabel(collectScroll, "Status: Idle", Color3.fromRGB(160, 175, 230), 20, 1)
+statusLabel.Font = Enum.Font.GothamBold
+
+local sessionLabel = makeRowLabel(collectScroll, "OGs collected this session: 0", Color3.fromRGB(120, 200, 140), 18, 2)
+
+makeRowLabel(collectScroll, "Rarity filter:", Color3.fromRGB(160, 175, 230), 16, 3).Font = Enum.Font.GothamBold
+
+local rarityRow = Instance.new("Frame", collectScroll)
+rarityRow.Size = UDim2.new(1, 0, 0, 26)
+rarityRow.BackgroundTransparency = 1
+rarityRow.LayoutOrder = 4
+rarityRow.ZIndex = 6
+
+local rarityBtns = {}
+for i, r in ipairs({ "OG", "Rare", "Common" }) do
+	local rb = Instance.new("TextButton", rarityRow)
+	rb.Size = UDim2.new(0, 78, 0, 24)
+	rb.Position = UDim2.new(0, (i - 1) * 84, 0, 0)
+	rb.BackgroundColor3 = collectorConfig.rarityFilter[r] and RARITY_COLORS[r] or Color3.fromRGB(35, 38, 58)
+	rb.Text = r
+	rb.TextColor3 = Color3.fromRGB(230, 235, 255)
+	rb.TextSize = 10
+	rb.Font = Enum.Font.GothamBold
+	rb.BorderSizePixel = 0
+	rb.ZIndex = 7
+	Instance.new("UICorner", rb).CornerRadius = UDim.new(0, 5)
+	rarityBtns[r] = rb
+	rb.MouseButton1Click:Connect(function()
+		rippleButton(rb)
+		collectorConfig.rarityFilter[r] = not collectorConfig.rarityFilter[r]
+		rb.BackgroundColor3 = collectorConfig.rarityFilter[r] and RARITY_COLORS[r] or Color3.fromRGB(35, 38, 58)
+		addLog("Rarity " .. r .. ": " .. tostring(collectorConfig.rarityFilter[r]), "Config")
+	end)
+end
+
+local speedBtn = makeToggleBtn(collectScroll, "Speed (" .. collectorConfig.speed .. ")", true, Color3.fromRGB(50, 90, 130), Color3.fromRGB(50, 90, 130), 5)
+speedBtn.Text = "Speed: " .. collectorConfig.speed .. " (click to cycle)"
+speedBtn.MouseButton1Click:Connect(function()
+	rippleButton(speedBtn)
+	local idx = 1
+	for i, s in ipairs(SPEED_ORDER) do
+		if s == collectorConfig.speed then
+			idx = i
+			break
+		end
+	end
+	idx = (idx % #SPEED_ORDER) + 1
+	collectorConfig.speed = SPEED_ORDER[idx]
+	speedBtn.Text = "Speed: " .. collectorConfig.speed .. " (click to cycle)"
+	addLog("Collection speed: " .. collectorConfig.speed, "Config")
+end)
+
+local loopBtn = makeToggleBtn(collectScroll, "Loop mode", collectorConfig.loopMode, Color3.fromRGB(40, 100, 60), Color3.fromRGB(70, 40, 40), 6)
+loopBtn.MouseButton1Click:Connect(function()
+	rippleButton(loopBtn)
+	collectorConfig.loopMode = not collectorConfig.loopMode
+	loopBtn.Text = "Loop mode: " .. (collectorConfig.loopMode and "ON" or "OFF")
+	loopBtn.BackgroundColor3 = collectorConfig.loopMode and Color3.fromRGB(40, 100, 60) or Color3.fromRGB(70, 40, 40)
+	addLog("Loop mode: " .. tostring(collectorConfig.loopMode), "Config")
+end)
+
+local loopWaitRow = Instance.new("Frame", collectScroll)
+loopWaitRow.Size = UDim2.new(1, 0, 0, 28)
+loopWaitRow.BackgroundTransparency = 1
+loopWaitRow.LayoutOrder = 7
+loopWaitRow.ZIndex = 6
+
+local loopWaitLabel = Instance.new("TextLabel", loopWaitRow)
+loopWaitLabel.Size = UDim2.new(0, 110, 1, 0)
+loopWaitLabel.BackgroundTransparency = 1
+loopWaitLabel.Text = "Loop wait (s):"
+loopWaitLabel.TextColor3 = Color3.fromRGB(160, 175, 230)
+loopWaitLabel.TextSize = 11
+loopWaitLabel.Font = Enum.Font.Gotham
+loopWaitLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local loopWaitMinus = Instance.new("TextButton", loopWaitRow)
+loopWaitMinus.Size = UDim2.new(0, 26, 0, 26)
+loopWaitMinus.Position = UDim2.new(0, 130, 0, 0)
+loopWaitMinus.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+loopWaitMinus.Text = "-"
+loopWaitMinus.TextColor3 = Color3.fromRGB(255, 180, 180)
+loopWaitMinus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", loopWaitMinus).CornerRadius = UDim.new(0, 5)
+
+local loopWaitValue = Instance.new("TextLabel", loopWaitRow)
+loopWaitValue.Size = UDim2.new(0, 30, 0, 26)
+loopWaitValue.Position = UDim2.new(0, 160, 0, 0)
+loopWaitValue.BackgroundTransparency = 1
+loopWaitValue.Text = tostring(collectorConfig.loopWait)
+loopWaitValue.TextColor3 = Color3.fromRGB(220, 220, 255)
+loopWaitValue.Font = Enum.Font.GothamBold
+
+local loopWaitPlus = Instance.new("TextButton", loopWaitRow)
+loopWaitPlus.Size = UDim2.new(0, 26, 0, 26)
+loopWaitPlus.Position = UDim2.new(0, 194, 0, 0)
+loopWaitPlus.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+loopWaitPlus.Text = "+"
+loopWaitPlus.TextColor3 = Color3.fromRGB(180, 255, 180)
+loopWaitPlus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", loopWaitPlus).CornerRadius = UDim.new(0, 5)
+
+loopWaitMinus.MouseButton1Click:Connect(function()
+	collectorConfig.loopWait = math.max(1, collectorConfig.loopWait - 1)
+	loopWaitValue.Text = tostring(collectorConfig.loopWait)
+end)
+loopWaitPlus.MouseButton1Click:Connect(function()
+	collectorConfig.loopWait = math.min(30, collectorConfig.loopWait + 1)
+	loopWaitValue.Text = tostring(collectorConfig.loopWait)
+end)
+
+local proximityToggle = makeToggleBtn(collectScroll, "OG proximity alerts", false, Color3.fromRGB(50, 90, 130), Color3.fromRGB(45, 45, 65), 8)
+proximityToggle.MouseButton1Click:Connect(function()
+	rippleButton(proximityToggle)
+	proximityAlertsEnabled = not proximityAlertsEnabled
+	proximityToggle.Text = "OG proximity alerts: " .. (proximityAlertsEnabled and "ON" or "OFF")
+	proximityToggle.BackgroundColor3 = proximityAlertsEnabled and Color3.fromRGB(50, 90, 130) or Color3.fromRGB(45, 45, 65)
+	addLog("Proximity alerts: " .. tostring(proximityAlertsEnabled), "Config")
+end)
+
+local maxRow = Instance.new("Frame", collectScroll)
+maxRow.Size = UDim2.new(1, 0, 0, 28)
+maxRow.BackgroundTransparency = 1
+maxRow.LayoutOrder = 9
+maxRow.ZIndex = 6
+
+local maxLabel = Instance.new("TextLabel", maxRow)
+maxLabel.Size = UDim2.new(0, 110, 1, 0)
+maxLabel.BackgroundTransparency = 1
+maxLabel.Text = "Max per run:"
+maxLabel.TextColor3 = Color3.fromRGB(160, 175, 230)
+maxLabel.TextSize = 11
+maxLabel.Font = Enum.Font.Gotham
+
+local maxMinus = Instance.new("TextButton", maxRow)
+maxMinus.Size = UDim2.new(0, 26, 0, 26)
+maxMinus.Position = UDim2.new(0, 130, 0, 0)
+maxMinus.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+maxMinus.Text = "-"
+maxMinus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", maxMinus).CornerRadius = UDim.new(0, 5)
+
+local maxValue = Instance.new("TextLabel", maxRow)
+maxValue.Size = UDim2.new(0, 30, 0, 26)
+maxValue.Position = UDim2.new(0, 160, 0, 0)
+maxValue.BackgroundTransparency = 1
+maxValue.Text = tostring(MAX_BRAINROTS)
+maxValue.TextColor3 = Color3.fromRGB(220, 220, 255)
+maxValue.Font = Enum.Font.GothamBold
+
+local maxPlus = Instance.new("TextButton", maxRow)
+maxPlus.Size = UDim2.new(0, 26, 0, 26)
+maxPlus.Position = UDim2.new(0, 194, 0, 0)
+maxPlus.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+maxPlus.Text = "+"
+maxPlus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", maxPlus).CornerRadius = UDim.new(0, 5)
+
+local maxPerRun = MAX_BRAINROTS
+maxMinus.MouseButton1Click:Connect(function()
+	maxPerRun = math.max(1, maxPerRun - 1)
+	maxValue.Text = tostring(maxPerRun)
+end)
+maxPlus.MouseButton1Click:Connect(function()
+	maxPerRun = math.min(10, maxPerRun + 1)
+	maxValue.Text = tostring(maxPerRun)
+end)
+
+local autoReturnBtn = makeToggleBtn(collectScroll, "Auto return to safe zone", collectorConfig.autoReturn, Color3.fromRGB(40, 80, 60), Color3.fromRGB(60, 40, 40), 10)
+autoReturnBtn.MouseButton1Click:Connect(function()
+	rippleButton(autoReturnBtn)
+	collectorConfig.autoReturn = not collectorConfig.autoReturn
+	autoReturnBtn.Text = "Auto return: " .. (collectorConfig.autoReturn and "ON" or "OFF")
+	autoReturnBtn.BackgroundColor3 = collectorConfig.autoReturn and Color3.fromRGB(40, 80, 60) or Color3.fromRGB(60, 40, 40)
+end)
+
+makeRowLabel(collectScroll, "Blacklist (type name, press Add):", Color3.fromRGB(160, 175, 230), 16, 9).Font = Enum.Font.GothamBold
+
+local blInput = Instance.new("TextBox", collectScroll)
+blInput.Size = UDim2.new(1, -70, 0, 26)
+blInput.BackgroundColor3 = Color3.fromRGB(20, 22, 38)
+blInput.Text = ""
+blInput.PlaceholderText = "Brainrot name..."
+blInput.TextColor3 = Color3.fromRGB(210, 220, 255)
+blInput.PlaceholderColor3 = Color3.fromRGB(100, 110, 140)
+blInput.TextSize = 11
+blInput.Font = Enum.Font.Gotham
+blInput.ClearTextOnFocus = false
+blInput.LayoutOrder = 10
+blInput.ZIndex = 6
+Instance.new("UICorner", blInput).CornerRadius = UDim.new(0, 5)
+local blStroke = Instance.new("UIStroke", blInput)
+blStroke.Color = Color3.fromRGB(60, 70, 110)
+blStroke.Thickness = 1
+
+local blAddBtn = Instance.new("TextButton", collectScroll)
+blAddBtn.Size = UDim2.new(0, 60, 0, 26)
+blAddBtn.Position = UDim2.new(1, -60, 0, 0)
+blAddBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 80)
+blAddBtn.Text = "Add"
+blAddBtn.TextColor3 = Color3.fromRGB(220, 200, 255)
+blAddBtn.TextSize = 11
+blAddBtn.Font = Enum.Font.GothamBold
+blAddBtn.LayoutOrder = 10
+blAddBtn.ZIndex = 7
+Instance.new("UICorner", blAddBtn).CornerRadius = UDim.new(0, 5)
+
+local blListScroll = Instance.new("ScrollingFrame", collectScroll)
+blListScroll.Size = UDim2.new(1, 0, 0, 52)
+blListScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+blListScroll.BackgroundTransparency = 0.3
+blListScroll.BorderSizePixel = 0
+blListScroll.ScrollBarThickness = 3
+blListScroll.LayoutOrder = 11
+blListScroll.ZIndex = 6
+Instance.new("UICorner", blListScroll).CornerRadius = UDim.new(0, 5)
+local blLayout = Instance.new("UIListLayout", blListScroll)
+blLayout.Padding = UDim.new(0, 2)
+
+local function refreshBlacklistUI()
+	for _, c in ipairs(blListScroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	for i, name in ipairs(collectorConfig.blacklist) do
+		local row = Instance.new("TextButton", blListScroll)
+		row.Size = UDim2.new(1, -6, 0, 18)
+		row.BackgroundTransparency = 1
+		row.Text = "  X  " .. name
+		row.TextColor3 = Color3.fromRGB(255, 150, 150)
+		row.TextSize = 10
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 7
+		row.MouseButton1Click:Connect(function()
+			listRemove(collectorConfig.blacklist, name)
+			refreshBlacklistUI()
+			addLog("Removed from blacklist: " .. name, "Config")
+		end)
+	end
+	blListScroll.CanvasSize = UDim2.new(0, 0, 0, blLayout.AbsoluteContentSize.Y + 4)
+end
+
+blAddBtn.MouseButton1Click:Connect(function()
+	rippleButton(blAddBtn)
+	local name = blInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then return end
+	if not listHas(collectorConfig.blacklist, name) then
+		table.insert(collectorConfig.blacklist, name)
+		refreshBlacklistUI()
+		addLog("Blacklisted: " .. name, "Config")
+	end
+	blInput.Text = ""
+end)
+
+local collectBtn = makeActionBtn(collectScroll, "Start Collecting", Color3.fromRGB(40, 100, 60), 40, 12)
+local cg = Instance.new("UIGradient", collectBtn)
+cg.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 130, 75)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 80, 50)),
+})
+cg.Rotation = 90
+Instance.new("UIStroke", collectBtn).Color = Color3.fromRGB(60, 160, 90)
+
+local resetCountBtn = makeActionBtn(collectScroll, "Reset Session Count", Color3.fromRGB(80, 40, 40), 28, 13)
+
+-- ─── HITTER PANEL ───
+
+local hitPanel = makePanel()
+local hitScroll = makeScrollPanel(hitPanel, 4)
+
+local hitStatusLabel = makeRowLabel(hitScroll, "Status: Idle", Color3.fromRGB(160, 175, 230), 20, 1)
+hitStatusLabel.Font = Enum.Font.GothamBold
+
+makeRowLabel(hitScroll, "Hit mode:", Color3.fromRGB(160, 175, 230), 16, 2).Font = Enum.Font.GothamBold
+
+local hitModes = { "All", "Specific", "Random" }
+local modeBtns = {}
+local modeRow = Instance.new("Frame", hitScroll)
+modeRow.Size = UDim2.new(1, 0, 0, 26)
+modeRow.BackgroundTransparency = 1
+modeRow.LayoutOrder = 3
+modeRow.ZIndex = 6
+
+for i, mode in ipairs(hitModes) do
+	local mb = Instance.new("TextButton", modeRow)
+	mb.Size = UDim2.new(0, 78, 0, 24)
+	mb.Position = UDim2.new(0, (i - 1) * 84, 0, 0)
+	mb.BackgroundColor3 = hitterConfig.targetMode == mode and Color3.fromRGB(55, 80, 170) or Color3.fromRGB(35, 38, 58)
+	mb.Text = mode
+	mb.TextColor3 = Color3.fromRGB(220, 230, 255)
+	mb.TextSize = 10
+	mb.Font = Enum.Font.GothamBold
+	mb.BorderSizePixel = 0
+	mb.ZIndex = 7
+	Instance.new("UICorner", mb).CornerRadius = UDim.new(0, 5)
+	modeBtns[mode] = mb
+	mb.MouseButton1Click:Connect(function()
+		rippleButton(mb)
+		hitterConfig.targetMode = mode
+		for m, b in pairs(modeBtns) do
+			b.BackgroundColor3 = m == mode and Color3.fromRGB(55, 80, 170) or Color3.fromRGB(35, 38, 58)
+		end
+		addLog("Hit mode: " .. mode, "Config")
+	end)
+end
+
+makeRowLabel(hitScroll, "Target checklist (Specific mode):", Color3.fromRGB(160, 175, 230), 16, 4).Font = Enum.Font.GothamBold
+
+local targetListScroll = Instance.new("ScrollingFrame", hitScroll)
+targetListScroll.Size = UDim2.new(1, 0, 0, 70)
+targetListScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+targetListScroll.BackgroundTransparency = 0.3
+targetListScroll.BorderSizePixel = 0
+targetListScroll.ScrollBarThickness = 3
+targetListScroll.LayoutOrder = 5
+targetListScroll.ZIndex = 6
+Instance.new("UICorner", targetListScroll).CornerRadius = UDim.new(0, 5)
+local tlLayout = Instance.new("UIListLayout", targetListScroll)
+tlLayout.Padding = UDim.new(0, 2)
+local tlPad = Instance.new("UIPadding", targetListScroll)
+tlPad.PaddingLeft = UDim.new(0, 4)
+tlPad.PaddingTop = UDim.new(0, 4)
+
+local function refreshTargetChecklist()
+	for _, c in ipairs(targetListScroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	local allPlayers = Players:GetPlayers()
+	for i, p in ipairs(allPlayers) do
+		if p ~= player then
+			local selected = listHas(hitterConfig.specificTargets, p.Name)
+			local row = Instance.new("TextButton", targetListScroll)
+			row.Size = UDim2.new(1, -8, 0, 20)
+			row.BackgroundTransparency = 1
+			row.Text = (selected and "[X] " or "[ ] ") .. p.Name
+			row.TextColor3 = selected and Color3.fromRGB(120, 200, 255) or Color3.fromRGB(160, 175, 220)
+			row.TextSize = 10
+			row.Font = Enum.Font.Gotham
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.LayoutOrder = i
+			row.ZIndex = 7
+			row.MouseButton1Click:Connect(function()
+				if listHas(hitterConfig.specificTargets, p.Name) then
+					listRemove(hitterConfig.specificTargets, p.Name)
+				else
+					table.insert(hitterConfig.specificTargets, p.Name)
+				end
+				refreshTargetChecklist()
+			end)
+		end
+	end
+	targetListScroll.CanvasSize = UDim2.new(0, 0, 0, tlLayout.AbsoluteContentSize.Y + 8)
+end
+
+makeRowLabel(hitScroll, "Skip list (type name, press Add):", Color3.fromRGB(160, 175, 230), 16, 6).Font = Enum.Font.GothamBold
+
+local skipInput = Instance.new("TextBox", hitScroll)
+skipInput.Size = UDim2.new(1, 0, 0, 26)
+skipInput.BackgroundColor3 = Color3.fromRGB(20, 22, 38)
+skipInput.PlaceholderText = "Player to skip..."
+skipInput.Text = ""
+skipInput.TextColor3 = Color3.fromRGB(210, 220, 255)
+skipInput.PlaceholderColor3 = Color3.fromRGB(100, 110, 140)
+skipInput.TextSize = 11
+skipInput.Font = Enum.Font.Gotham
+skipInput.LayoutOrder = 7
+skipInput.ZIndex = 6
+Instance.new("UICorner", skipInput).CornerRadius = UDim.new(0, 5)
+
+local skipAddBtn = makeActionBtn(hitScroll, "Add to Skip List", Color3.fromRGB(70, 40, 40), 26, 8)
+
+local skipListScroll = Instance.new("ScrollingFrame", hitScroll)
+skipListScroll.Size = UDim2.new(1, 0, 0, 44)
+skipListScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+skipListScroll.BackgroundTransparency = 0.3
+skipListScroll.BorderSizePixel = 0
+skipListScroll.ScrollBarThickness = 3
+skipListScroll.LayoutOrder = 9
+skipListScroll.ZIndex = 6
+Instance.new("UICorner", skipListScroll).CornerRadius = UDim.new(0, 5)
+local slLayout = Instance.new("UIListLayout", skipListScroll)
+
+local function refreshSkipListUI()
+	for _, c in ipairs(skipListScroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	for i, name in ipairs(hitterConfig.skipList) do
+		local row = Instance.new("TextButton", skipListScroll)
+		row.Size = UDim2.new(1, -6, 0, 18)
+		row.BackgroundTransparency = 1
+		row.Text = "  X  " .. name
+		row.TextColor3 = Color3.fromRGB(255, 180, 120)
+		row.TextSize = 10
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 7
+		row.MouseButton1Click:Connect(function()
+			listRemove(hitterConfig.skipList, name)
+			refreshSkipListUI()
+		end)
+	end
+	skipListScroll.CanvasSize = UDim2.new(0, 0, 0, slLayout.AbsoluteContentSize.Y + 4)
+end
+
+skipAddBtn.MouseButton1Click:Connect(function()
+	local name = skipInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then return end
+	if not listHas(hitterConfig.skipList, name) then
+		table.insert(hitterConfig.skipList, name)
+		refreshSkipListUI()
+		addLog("Skip list: " .. name, "Config")
+	end
+	skipInput.Text = ""
+end)
+
+local swingRow = Instance.new("Frame", hitScroll)
+swingRow.Size = UDim2.new(1, 0, 0, 28)
+swingRow.BackgroundTransparency = 1
+swingRow.LayoutOrder = 10
+swingRow.ZIndex = 6
+
+local swingLabel = Instance.new("TextLabel", swingRow)
+swingLabel.Size = UDim2.new(0, 110, 1, 0)
+swingLabel.BackgroundTransparency = 1
+swingLabel.Text = "Swings per player:"
+swingLabel.TextColor3 = Color3.fromRGB(160, 175, 230)
+swingLabel.TextSize = 11
+swingLabel.Font = Enum.Font.Gotham
+swingLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local swingMinus = Instance.new("TextButton", swingRow)
+swingMinus.Size = UDim2.new(0, 26, 0, 26)
+swingMinus.Position = UDim2.new(0, 130, 0, 0)
+swingMinus.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+swingMinus.Text = "-"
+swingMinus.TextColor3 = Color3.fromRGB(255, 180, 180)
+swingMinus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", swingMinus).CornerRadius = UDim.new(0, 5)
+
+local swingValue = Instance.new("TextLabel", swingRow)
+swingValue.Size = UDim2.new(0, 30, 0, 26)
+swingValue.Position = UDim2.new(0, 160, 0, 0)
+swingValue.BackgroundTransparency = 1
+swingValue.Text = tostring(hitterConfig.swingCount)
+swingValue.TextColor3 = Color3.fromRGB(220, 220, 255)
+swingValue.Font = Enum.Font.GothamBold
+
+local swingPlus = Instance.new("TextButton", swingRow)
+swingPlus.Size = UDim2.new(0, 26, 0, 26)
+swingPlus.Position = UDim2.new(0, 194, 0, 0)
+swingPlus.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+swingPlus.Text = "+"
+swingPlus.TextColor3 = Color3.fromRGB(180, 255, 180)
+swingPlus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", swingPlus).CornerRadius = UDim.new(0, 5)
+
+swingMinus.MouseButton1Click:Connect(function()
+	hitterConfig.swingCount = math.max(1, hitterConfig.swingCount - 1)
+	swingValue.Text = tostring(hitterConfig.swingCount)
+end)
+swingPlus.MouseButton1Click:Connect(function()
+	hitterConfig.swingCount = math.min(10, hitterConfig.swingCount + 1)
+	swingValue.Text = tostring(hitterConfig.swingCount)
+end)
+
+local cdRow = Instance.new("Frame", hitScroll)
+cdRow.Size = UDim2.new(1, 0, 0, 28)
+cdRow.BackgroundTransparency = 1
+cdRow.LayoutOrder = 11
+cdRow.ZIndex = 6
+
+local cdLabel = Instance.new("TextLabel", cdRow)
+cdLabel.Size = UDim2.new(0, 110, 1, 0)
+cdLabel.BackgroundTransparency = 1
+cdLabel.Text = "Cooldown (s):"
+cdLabel.TextColor3 = Color3.fromRGB(160, 175, 230)
+cdLabel.TextSize = 11
+cdLabel.Font = Enum.Font.Gotham
+
+local cdMinus = Instance.new("TextButton", cdRow)
+cdMinus.Size = UDim2.new(0, 26, 0, 26)
+cdMinus.Position = UDim2.new(0, 130, 0, 0)
+cdMinus.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+cdMinus.Text = "-"
+cdMinus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", cdMinus).CornerRadius = UDim.new(0, 5)
+
+local cdValue = Instance.new("TextLabel", cdRow)
+cdValue.Size = UDim2.new(0, 30, 0, 26)
+cdValue.Position = UDim2.new(0, 160, 0, 0)
+cdValue.BackgroundTransparency = 1
+cdValue.Text = tostring(hitterConfig.cooldownTime)
+cdValue.TextColor3 = Color3.fromRGB(220, 220, 255)
+cdValue.Font = Enum.Font.GothamBold
+
+local cdPlus = Instance.new("TextButton", cdRow)
+cdPlus.Size = UDim2.new(0, 26, 0, 26)
+cdPlus.Position = UDim2.new(0, 194, 0, 0)
+cdPlus.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+cdPlus.Text = "+"
+cdPlus.Font = Enum.Font.GothamBold
+Instance.new("UICorner", cdPlus).CornerRadius = UDim.new(0, 5)
+
+cdMinus.MouseButton1Click:Connect(function()
+	hitterConfig.cooldownTime = math.max(0, hitterConfig.cooldownTime - 1)
+	cdValue.Text = tostring(hitterConfig.cooldownTime)
+end)
+cdPlus.MouseButton1Click:Connect(function()
+	hitterConfig.cooldownTime = math.min(10, hitterConfig.cooldownTime + 1)
+	cdValue.Text = tostring(hitterConfig.cooldownTime)
+end)
+
+local hitBtn = makeActionBtn(hitScroll, "Start Hitting", Color3.fromRGB(40, 60, 130), 40, 12)
+local hg = Instance.new("UIGradient", hitBtn)
+hg.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(55, 80, 170)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 50, 110)),
+})
+hg.Rotation = 90
+Instance.new("UIStroke", hitBtn).Color = Color3.fromRGB(80, 110, 210)
+
+-- ─── LOG PANEL ───
+
+local logPanel = makePanel()
+
+local logFilterRow = Instance.new("Frame", logPanel)
+logFilterRow.Size = UDim2.new(1, -16, 0, 22)
+logFilterRow.Position = UDim2.new(0, 8, 0, 4)
+logFilterRow.BackgroundTransparency = 1
+logFilterRow.ZIndex = 5
+
+local logFilter = "All"
+local logFilterBtns = {}
+for i, f in ipairs({ "All", "Collect", "Hit", "Error" }) do
+	local fb = Instance.new("TextButton", logFilterRow)
+	fb.Size = UDim2.new(0, 58, 0, 20)
+	fb.Position = UDim2.new(0, (i - 1) * 62, 0, 0)
+	fb.BackgroundColor3 = f == "All" and Color3.fromRGB(60, 70, 110) or Color3.fromRGB(35, 38, 58)
+	fb.Text = f
+	fb.TextColor3 = Color3.fromRGB(200, 210, 240)
+	fb.TextSize = 9
+	fb.Font = Enum.Font.GothamBold
+	fb.BorderSizePixel = 0
+	fb.ZIndex = 6
+	Instance.new("UICorner", fb).CornerRadius = UDim.new(0, 4)
+	logFilterBtns[f] = fb
+end
+
+local logScroll = Instance.new("ScrollingFrame", logPanel)
+logScroll.Size = UDim2.new(1, -16, 1, -36)
+logScroll.Position = UDim2.new(0, 8, 0, 30)
+logScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+logScroll.BackgroundTransparency = 0.3
+logScroll.BorderSizePixel = 0
+logScroll.ScrollBarThickness = 4
+logScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 100, 180)
+logScroll.ZIndex = 5
+Instance.new("UICorner", logScroll).CornerRadius = UDim.new(0, 6)
+
+local logLayout = Instance.new("UIListLayout", logScroll)
+logLayout.Padding = UDim.new(0, 2)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local logPadding = Instance.new("UIPadding", logScroll)
+logPadding.PaddingLeft = UDim.new(0, 6)
+logPadding.PaddingTop = UDim.new(0, 4)
+
+local function refreshLog()
+	for _, c in ipairs(logScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	local order = 0
+	for _, entry in ipairs(logEntries) do
+		if logFilter == "All" or entry.type == logFilter then
+			order += 1
+			local row = Instance.new("TextLabel", logScroll)
+			row.Size = UDim2.new(1, -8, 0, 16)
+			row.BackgroundTransparency = 1
+			row.Text = entry.text
+			row.TextColor3 = entry.color
+			row.TextSize = 10
+			row.Font = Enum.Font.Gotham
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.LayoutOrder = order
+			row.ZIndex = 6
+		end
+	end
+	logScroll.CanvasSize = UDim2.new(0, 0, 0, logLayout.AbsoluteContentSize.Y + 8)
+	logScroll.CanvasPosition = Vector2.new(0, math.max(0, logScroll.CanvasSize.Y.Offset - logScroll.AbsoluteSize.Y))
+end
+
+for f, fb in pairs(logFilterBtns) do
+	fb.MouseButton1Click:Connect(function()
+		logFilter = f
+		for name, btn in pairs(logFilterBtns) do
+			btn.BackgroundColor3 = name == f and Color3.fromRGB(60, 70, 110) or Color3.fromRGB(35, 38, 58)
+		end
+		refreshLog()
+	end)
+end
+
+local clearLogBtn = Instance.new("TextButton", logPanel)
+clearLogBtn.Size = UDim2.new(1, -16, 0, 22)
+clearLogBtn.Position = UDim2.new(0, 8, 1, -26)
+clearLogBtn.BackgroundColor3 = Color3.fromRGB(60, 30, 30)
+clearLogBtn.Text = "Clear Log"
+clearLogBtn.TextColor3 = Color3.fromRGB(255, 160, 160)
+clearLogBtn.TextSize = 11
+clearLogBtn.Font = Enum.Font.GothamBold
+clearLogBtn.BorderSizePixel = 0
+clearLogBtn.ZIndex = 5
+Instance.new("UICorner", clearLogBtn).CornerRadius = UDim.new(0, 5)
+
+clearLogBtn.MouseButton1Click:Connect(function()
+	logEntries = {}
+	refreshLog()
+end)
+
+-- ─── UTILITY PANEL ───
+
+local utilPanel = makePanel()
+local utilScroll = makeScrollPanel(utilPanel, 4)
+
+local sessionClockLabel = makeRowLabel(utilScroll, "Session time: 00:00", Color3.fromRGB(180, 200, 255), 18, 1)
+sessionClockLabel.Font = Enum.Font.GothamBold
+
+local serverInfoLabel = makeRowLabel(utilScroll, "Server: loading...", Color3.fromRGB(160, 175, 230), 18, 2)
+
+makeRowLabel(utilScroll, "Cozy corner:", Color3.fromRGB(220, 180, 255), 16, 3).Font = Enum.Font.GothamBold
+
+local cozyTipLabel = makeRowLabel(utilScroll, cozyTips[tipIndex], Color3.fromRGB(180, 170, 210), 28, 4)
+cozyTipLabel.TextWrapped = true
+cozyTipLabel.TextSize = 10
+
+local themeBtn = makeActionBtn(utilScroll, "Theme: " .. cozyConfig.theme .. " (tap to cycle)", Color3.fromRGB(70, 50, 100), 28, 5)
+themeBtn.MouseButton1Click:Connect(function()
+	local idx = table.find(THEME_ORDER, cozyConfig.theme) or 1
+	idx = (idx % #THEME_ORDER) + 1
+	applyCozyTheme(THEME_ORDER[idx])
+	themeBtn.Text = "Theme: " .. cozyConfig.theme .. " (tap to cycle)"
+	addLog("Theme: " .. cozyConfig.theme, "Config")
+end)
+
+local function makeCozyToggle(scroll, label, key, order, onColor, offColor)
+	local btn = makeActionBtn(scroll, label .. ": ON", onColor, 26, order)
+	local function refresh()
+		local on = cozyConfig[key]
+		btn.Text = label .. ": " .. (on and "ON" or "OFF")
+		btn.BackgroundColor3 = on and onColor or offColor
+	end
+	btn.MouseButton1Click:Connect(function()
+		cozyConfig[key] = not cozyConfig[key]
+		refresh()
+		if guiOpen then
+			if key == "snowEnabled" then
+				snowContainer.Visible = cozyConfig.snowEnabled
+				if not cozyConfig.snowEnabled then
+					for _, sf in ipairs(snowflakes) do sf.label:Destroy() end
+					snowflakes = {}
+				end
+			elseif key == "firefliesEnabled" then
+				fireflyContainer.Visible = cozyConfig.firefliesEnabled
+				if not cozyConfig.firefliesEnabled then
+					for _, ff in ipairs(fireflies) do ff.label:Destroy() end
+					fireflies = {}
+				end
+			end
+		end
+		addLog(label .. ": " .. tostring(cozyConfig[key]), "Config")
+	end)
+	refresh()
+	return btn
+end
+
+makeCozyToggle(utilScroll, "Snowflakes", "snowEnabled", 6, Color3.fromRGB(50, 80, 120), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Fireflies", "firefliesEnabled", 7, Color3.fromRGB(80, 70, 40), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Breathing glow", "breatheEnabled", 8, Color3.fromRGB(60, 50, 90), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Collect confetti", "confettiEnabled", 9, Color3.fromRGB(90, 60, 100), Color3.fromRGB(45, 45, 55))
+
+makeRowLabel(utilScroll, "Sound effects:", Color3.fromRGB(160, 175, 230), 16, 10).Font = Enum.Font.GothamBold
+makeCozyToggle(utilScroll, "Master sound", "soundEnabled", 11, Color3.fromRGB(70, 70, 100), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Collect sounds", "collectSoundEnabled", 12, Color3.fromRGB(60, 90, 90), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Hit sounds", "hitSoundEnabled", 13, Color3.fromRGB(90, 70, 70), Color3.fromRGB(45, 45, 55))
+makeCozyToggle(utilScroll, "Achievement sounds", "achievementSoundEnabled", 14, Color3.fromRGB(90, 80, 60), Color3.fromRGB(45, 45, 55))
+
+local favInput = Instance.new("TextBox", utilScroll)
+favInput.Size = UDim2.new(1, 0, 0, 26)
+favInput.BackgroundColor3 = Color3.fromRGB(20, 22, 38)
+favInput.PlaceholderText = "Favorite brainrot name..."
+favInput.Text = ""
+favInput.TextColor3 = Color3.fromRGB(210, 220, 255)
+favInput.PlaceholderColor3 = Color3.fromRGB(100, 110, 140)
+favInput.TextSize = 11
+favInput.Font = Enum.Font.Gotham
+favInput.LayoutOrder = 15
+favInput.ZIndex = 6
+Instance.new("UICorner", favInput).CornerRadius = UDim.new(0, 5)
+
+local favAddBtn = makeActionBtn(utilScroll, "Add Favorite ♥", Color3.fromRGB(90, 50, 70), 26, 16)
+favAddBtn.MouseButton1Click:Connect(function()
+	local name = favInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then return end
+	if not listHas(favoriteBrainrots, name) then
+		table.insert(favoriteBrainrots, name)
+		addLog("Favorite: " .. name, "Config")
+		showNotif("Favorited " .. name .. " ♥", Color3.fromRGB(255, 150, 180))
+	end
+	favInput.Text = ""
+end)
+
+local safeZoneBtn = makeActionBtn(utilScroll, "Go to Safe Zone", Color3.fromRGB(80, 50, 130), 36, 17)
+local ug = Instance.new("UIGradient", safeZoneBtn)
+ug.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 60, 160)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 35, 100)),
+})
+ug.Rotation = 90
+
+makeRowLabel(utilScroll, "Saved teleport spots:", Color3.fromRGB(160, 175, 230), 16, 18).Font = Enum.Font.GothamBold
+
+local spotBtns = {}
+for i, spot in ipairs(savedSpots) do
+	local sb = makeActionBtn(utilScroll, spot.name .. (spot.cframe and "" or " (empty)"), Color3.fromRGB(45, 55, 95), 28, 18 + i)
+	spotBtns[i] = sb
+	sb.MouseButton1Click:Connect(function()
+		if spot.cframe then
+			teleportTo(spot.cframe)
+			addLog("Teleported to " .. spot.name, "Info")
+			showNotif("Teleported: " .. spot.name, Color3.fromRGB(150, 120, 220))
+		else
+			showNotif("Spot not saved yet!", Color3.fromRGB(255, 150, 100))
+		end
+	end)
+end
+
+local function saveCurrentToSpot(index)
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		savedSpots[index].cframe = char.HumanoidRootPart.CFrame
+		if spotBtns[index] then
+			spotBtns[index].Text = savedSpots[index].name .. " (saved)"
+		end
+		addLog("Saved position to " .. savedSpots[index].name, "Config")
+		showNotif(savedSpots[index].name .. " saved!", Color3.fromRGB(100, 180, 255))
+	end
+end
+
+local saveSpot2Btn = makeActionBtn(utilScroll, "Save Position → Spot 2", Color3.fromRGB(50, 70, 110), 26, 23)
+saveSpot2Btn.MouseButton1Click:Connect(function() saveCurrentToSpot(2) end)
+
+local saveSpot3Btn = makeActionBtn(utilScroll, "Save Position → Spot 3", Color3.fromRGB(50, 70, 110), 26, 24)
+saveSpot3Btn.MouseButton1Click:Connect(function() saveCurrentToSpot(3) end)
+
+local saveSpot4Btn = makeActionBtn(utilScroll, "Save Position → Spot 4", Color3.fromRGB(50, 70, 110), 26, 25)
+saveSpot4Btn.MouseButton1Click:Connect(function() saveCurrentToSpot(4) end)
+
+makeRowLabel(utilScroll, "Quick equip from backpack:", Color3.fromRGB(160, 175, 230), 16, 26).Font = Enum.Font.GothamBold
+
+local equipScroll = Instance.new("ScrollingFrame", utilScroll)
+equipScroll.Size = UDim2.new(1, 0, 0, 60)
+equipScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+equipScroll.BackgroundTransparency = 0.3
+equipScroll.BorderSizePixel = 0
+equipScroll.ScrollBarThickness = 3
+equipScroll.LayoutOrder = 27
+equipScroll.ZIndex = 6
+Instance.new("UICorner", equipScroll).CornerRadius = UDim.new(0, 5)
+local eqLayout = Instance.new("UIListLayout", equipScroll)
+eqLayout.Padding = UDim.new(0, 2)
+
+local function refreshEquipList()
+	for _, c in ipairs(equipScroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	local i = 0
+	for _, tool in ipairs(player.Backpack:GetChildren()) do
+		if tool:IsA("Tool") then
+			i += 1
+			local row = Instance.new("TextButton", equipScroll)
+			row.Size = UDim2.new(1, -8, 0, 22)
+			row.BackgroundTransparency = 1
+			row.Text = "  Equip: " .. tool.Name
+			row.TextColor3 = Color3.fromRGB(160, 200, 255)
+			row.TextSize = 10
+			row.Font = Enum.Font.Gotham
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.LayoutOrder = i
+			row.ZIndex = 7
+			row.MouseButton1Click:Connect(function()
+				if equipToolByName(tool.Name) then
+					addLog("Equipped " .. tool.Name, "Info")
+					showNotif("Equipped " .. tool.Name, Color3.fromRGB(100, 180, 255))
+				end
+			end)
+		end
+	end
+	equipScroll.CanvasSize = UDim2.new(0, 0, 0, eqLayout.AbsoluteContentSize.Y + 8)
+end
+
+local refreshEquipBtn = makeActionBtn(utilScroll, "Refresh Tools", Color3.fromRGB(40, 60, 100), 26, 28)
+
+makeRowLabel(utilScroll, "Players in server:", Color3.fromRGB(160, 175, 230), 16, 29).Font = Enum.Font.GothamBold
+
+local playerListScroll = Instance.new("ScrollingFrame", utilScroll)
+playerListScroll.Size = UDim2.new(1, 0, 0, 80)
+playerListScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+playerListScroll.BackgroundTransparency = 0.3
+playerListScroll.BorderSizePixel = 0
+playerListScroll.ScrollBarThickness = 3
+playerListScroll.LayoutOrder = 30
+playerListScroll.ZIndex = 6
+Instance.new("UICorner", playerListScroll).CornerRadius = UDim.new(0, 5)
+local plLayout = Instance.new("UIListLayout", playerListScroll)
+local plPad = Instance.new("UIPadding", playerListScroll)
+plPad.PaddingLeft = UDim.new(0, 6)
+plPad.PaddingTop = UDim.new(0, 4)
+
+local refreshPlBtn = makeActionBtn(utilScroll, "Refresh Player List", Color3.fromRGB(40, 60, 100), 26, 31)
+
+local function refreshPlayerList()
+	for _, c in ipairs(playerListScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	local allPlayers = Players:GetPlayers()
+	for i, p in ipairs(allPlayers) do
+		local row = Instance.new("TextLabel", playerListScroll)
+		row.Size = UDim2.new(1, -8, 0, 18)
+		row.BackgroundTransparency = 1
+		row.Text = (p == player and "* " or "  ") .. p.Name
+		row.TextColor3 = p == player and Color3.fromRGB(120, 220, 140) or Color3.fromRGB(160, 175, 220)
+		row.TextSize = 11
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 6
+	end
+	playerListScroll.CanvasSize = UDim2.new(0, 0, 0, plLayout.AbsoluteContentSize.Y + 8)
+end
+
+local function refreshServerInfo()
+	local count = #Players:GetPlayers()
+	local maxP = Players.MaxPlayers
+	serverInfoLabel.Text = string.format("Server: %d/%d players", count, maxP)
+end
+
+refreshPlBtn.MouseButton1Click:Connect(function()
+	refreshPlayerList()
+	refreshServerInfo()
+	refreshTargetChecklist()
+end)
+refreshEquipBtn.MouseButton1Click:Connect(refreshEquipList)
+safeZoneBtn.MouseButton1Click:Connect(function()
+	rippleButton(safeZoneBtn)
+	teleportTo(SAFE_ZONE_CFRAME)
+end)
+
+-- ─── STATS PANEL ───
+
+local statsPanel = makePanel()
+local statsScroll = makeScrollPanel(statsPanel, 4)
+
+local personalBestLabel = makeRowLabel(statsScroll, "Personal Best: 0 OGs", Color3.fromRGB(255, 215, 0), 22, 1)
+personalBestLabel.Font = Enum.Font.GothamBold
+personalBestLabel.TextSize = 13
+
+local statsSummary = makeRowLabel(statsScroll, "Session: 0 | Hits: 0 | Runs: 0", Color3.fromRGB(160, 200, 255), 18, 2)
+
+makeRowLabel(statsScroll, "Rarity breakdown:", Color3.fromRGB(160, 175, 230), 16, 3).Font = Enum.Font.GothamBold
+local rarityStatsLabel = makeRowLabel(statsScroll, "OG: 0 | Rare: 0 | Common: 0", Color3.fromRGB(180, 190, 220), 18, 4)
+
+makeRowLabel(statsScroll, "Top brainrots this session:", Color3.fromRGB(160, 175, 230), 16, 5).Font = Enum.Font.GothamBold
+
+local topBrainrotsScroll = Instance.new("ScrollingFrame", statsScroll)
+topBrainrotsScroll.Size = UDim2.new(1, 0, 0, 100)
+topBrainrotsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+topBrainrotsScroll.BackgroundTransparency = 0.3
+topBrainrotsScroll.BorderSizePixel = 0
+topBrainrotsScroll.ScrollBarThickness = 3
+topBrainrotsScroll.LayoutOrder = 6
+topBrainrotsScroll.ZIndex = 6
+Instance.new("UICorner", topBrainrotsScroll).CornerRadius = UDim.new(0, 5)
+local tbLayout = Instance.new("UIListLayout", topBrainrotsScroll)
+local tbPad = Instance.new("UIPadding", topBrainrotsScroll)
+tbPad.PaddingLeft = UDim.new(0, 6)
+tbPad.PaddingTop = UDim.new(0, 4)
+
+local hitStatsLabel = makeRowLabel(statsScroll, "Best hit session: 0 swings", Color3.fromRGB(100, 160, 255), 18, 7)
+local runStatsLabel = makeRowLabel(statsScroll, "Collection runs: 0 | Hit runs: 0", Color3.fromRGB(160, 175, 230), 18, 8)
+
+makeRowLabel(statsScroll, "Achievements:", Color3.fromRGB(255, 215, 0), 16, 9).Font = Enum.Font.GothamBold
+
+local achievementScroll = Instance.new("ScrollingFrame", statsScroll)
+achievementScroll.Size = UDim2.new(1, 0, 0, 90)
+achievementScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+achievementScroll.BackgroundTransparency = 0.3
+achievementScroll.BorderSizePixel = 0
+achievementScroll.ScrollBarThickness = 3
+achievementScroll.LayoutOrder = 10
+achievementScroll.ZIndex = 6
+Instance.new("UICorner", achievementScroll).CornerRadius = UDim.new(0, 5)
+local achLayout = Instance.new("UIListLayout", achievementScroll)
+local achPad = Instance.new("UIPadding", achievementScroll)
+achPad.PaddingLeft = UDim.new(0, 6)
+achPad.PaddingTop = UDim.new(0, 4)
+
+makeRowLabel(statsScroll, "Recent runs:", Color3.fromRGB(160, 175, 230), 16, 11).Font = Enum.Font.GothamBold
+
+local runHistoryScroll = Instance.new("ScrollingFrame", statsScroll)
+runHistoryScroll.Size = UDim2.new(1, 0, 0, 70)
+runHistoryScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+runHistoryScroll.BackgroundTransparency = 0.3
+runHistoryScroll.BorderSizePixel = 0
+runHistoryScroll.ScrollBarThickness = 3
+runHistoryScroll.LayoutOrder = 12
+runHistoryScroll.ZIndex = 6
+Instance.new("UICorner", runHistoryScroll).CornerRadius = UDim.new(0, 5)
+local rhLayout = Instance.new("UIListLayout", runHistoryScroll)
+local rhPad = Instance.new("UIPadding", runHistoryScroll)
+rhPad.PaddingLeft = UDim.new(0, 6)
+rhPad.PaddingTop = UDim.new(0, 4)
+
+makeRowLabel(statsScroll, "Brainrot encyclopedia:", Color3.fromRGB(160, 175, 230), 16, 14).Font = Enum.Font.GothamBold
+
+local encyclopediaScroll = Instance.new("ScrollingFrame", statsScroll)
+encyclopediaScroll.Size = UDim2.new(1, 0, 0, 110)
+encyclopediaScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 24)
+encyclopediaScroll.BackgroundTransparency = 0.3
+encyclopediaScroll.BorderSizePixel = 0
+encyclopediaScroll.ScrollBarThickness = 3
+encyclopediaScroll.LayoutOrder = 15
+encyclopediaScroll.ZIndex = 6
+Instance.new("UICorner", encyclopediaScroll).CornerRadius = UDim.new(0, 5)
+local encLayout = Instance.new("UIListLayout", encyclopediaScroll)
+local encPad = Instance.new("UIPadding", encyclopediaScroll)
+encPad.PaddingLeft = UDim.new(0, 6)
+encPad.PaddingTop = UDim.new(0, 4)
+
+local function refreshEncyclopedia()
+	for _, c in ipairs(encyclopediaScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	for i, name in ipairs(brainrotNames) do
+		local meta = getBrainrotMeta(name)
+		local row = Instance.new("TextLabel", encyclopediaScroll)
+		row.Size = UDim2.new(1, -8, 0, 28)
+		row.BackgroundTransparency = 1
+		row.Text = string.format("%s  [%s|%s]\n  %s", name, meta.tier, meta.group, meta.note)
+		row.TextColor3 = Color3.fromRGB(150, 170, 200)
+		row.TextSize = 9
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.TextYAlignment = Enum.TextYAlignment.Top
+		row.TextWrapped = true
+		row.LayoutOrder = i
+		row.ZIndex = 7
+	end
+	encyclopediaScroll.CanvasSize = UDim2.new(0, 0, 0, encLayout.AbsoluteContentSize.Y + 8)
+end
+
+local resetStatsBtn = makeActionBtn(statsScroll, "Reset All Stats", Color3.fromRGB(80, 40, 40), 28, 16)
+
+local function refreshStatsUI()
+	personalBestLabel.Text = "Personal Best: " .. sessionData.bestSession .. " OGs"
+	statsSummary.Text = string.format(
+		"Session: %d | Hits: %d | Runs: %d",
+		sessionData.collected,
+		sessionData.totalHits,
+		sessionData.runsCompleted
+	)
+	rarityStatsLabel.Text = string.format(
+		"OG: %d | Rare: %d | Common: %d",
+		sessionData.rarityCounts.OG,
+		sessionData.rarityCounts.Rare,
+		sessionData.rarityCounts.Common
+	)
+	hitStatsLabel.Text = "Best hit session: " .. sessionData.bestHitSession .. " swings"
+	runStatsLabel.Text = string.format("Collection runs: %d | Hit runs: %d", sessionData.runsCompleted, sessionData.hitRunsCompleted)
+
+	for _, c in ipairs(topBrainrotsScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	local sorted = {}
+	for name, count in pairs(sessionData.brainrotCounts) do
+		table.insert(sorted, { name = name, count = count })
+	end
+	table.sort(sorted, function(a, b) return a.count > b.count end)
+	for i, entry in ipairs(sorted) do
+		if i > 15 then break end
+		local row = Instance.new("TextLabel", topBrainrotsScroll)
+		row.Size = UDim2.new(1, -8, 0, 16)
+		row.BackgroundTransparency = 1
+		row.Text = string.format("  %d. %s — x%d", i, entry.name, entry.count)
+		row.TextColor3 = Color3.fromRGB(160, 200, 160)
+		row.TextSize = 10
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 7
+	end
+	topBrainrotsScroll.CanvasSize = UDim2.new(0, 0, 0, tbLayout.AbsoluteContentSize.Y + 8)
+
+	for _, c in ipairs(achievementScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	for i, ach in ipairs(ACHIEVEMENTS) do
+		local unlocked = sessionData.unlockedAchievements[ach.id] == true
+		local row = Instance.new("TextLabel", achievementScroll)
+		row.Size = UDim2.new(1, -8, 0, 16)
+		row.BackgroundTransparency = 1
+		row.Text = (unlocked and "✓ " or "○ ") .. ach.title .. " — " .. ach.desc
+		row.TextColor3 = unlocked and Color3.fromRGB(255, 220, 100) or Color3.fromRGB(100, 105, 130)
+		row.TextSize = 9
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 7
+	end
+	achievementScroll.CanvasSize = UDim2.new(0, 0, 0, achLayout.AbsoluteContentSize.Y + 8)
+
+	for _, c in ipairs(runHistoryScroll:GetChildren()) do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	for i, entry in ipairs(sessionData.runHistory) do
+		local row = Instance.new("TextLabel", runHistoryScroll)
+		row.Size = UDim2.new(1, -8, 0, 14)
+		row.BackgroundTransparency = 1
+		row.Text = "  " .. entry
+		row.TextColor3 = Color3.fromRGB(150, 170, 210)
+		row.TextSize = 9
+		row.Font = Enum.Font.Gotham
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = i
+		row.ZIndex = 7
+	end
+	runHistoryScroll.CanvasSize = UDim2.new(0, 0, 0, rhLayout.AbsoluteContentSize.Y + 8)
+end
+
+resetStatsBtn.MouseButton1Click:Connect(function()
+	sessionData.collected = 0
+	sessionData.bestSession = 0
+	sessionData.totalHits = 0
+	sessionData.bestHitSession = 0
+	sessionData.brainrotCounts = {}
+	sessionData.rarityCounts = { OG = 0, Rare = 0, Common = 0 }
+	sessionData.runsCompleted = 0
+	sessionData.hitRunsCompleted = 0
+	sessionData.runHistory = {}
+	sessionData.unlockedAchievements = {}
+	sessionLabel.Text = "OGs collected this session: 0"
+	refreshStatsUI()
+	addLog("All stats reset", "Config")
+	showNotif("Stats reset", Color3.fromRGB(255, 150, 100))
+end)
+
+-- ─── ANALYTICS PANEL ───
+
+local analyticsPanel = makePanel()
+local analyticsScroll = makeScrollPanel(analyticsPanel, 4)
+
+makeRowLabel(analyticsScroll, "Performance Analytics", Color3.fromRGB(70, 140, 160), 20, 1).Font = Enum.Font.GothamBold
+
+local efficiencyLabel = makeRowLabel(analyticsScroll, "Collection efficiency: 0.0/min", Color3.fromRGB(160, 200, 255), 18, 2)
+local hitEfficiencyLabel = makeRowLabel(analyticsScroll, "Hit efficiency: 0.0/min", Color3.fromRGB(160, 200, 255), 18, 3)
+
+makeRowLabel(analyticsScroll, "Time statistics:", Color3.fromRGB(160, 175, 230), 16, 4).Font = Enum.Font.GothamBold
+local totalCollectTimeLabel = makeRowLabel(analyticsScroll, "Total collection time: 0s", Color3.fromRGB(180, 190, 220), 16, 5)
+local totalHitTimeLabel = makeRowLabel(analyticsScroll, "Total hit time: 0s", Color3.fromRGB(180, 190, 220), 16, 6)
+local avgCollectTimeLabel = makeRowLabel(analyticsScroll, "Avg time per collect: 0s", Color3.fromRGB(180, 190, 220), 16, 7)
+local avgHitTimeLabel = makeRowLabel(analyticsScroll, "Avg time per hit: 0s", Color3.fromRGB(180, 190, 220), 16, 8)
+
+makeRowLabel(analyticsScroll, "Speed breakdown:", Color3.fromRGB(160, 175, 230), 16, 9).Font = Enum.Font.GothamBold
+local speedBreakdownLabel = makeRowLabel(analyticsScroll, "Insane: 0 | Fast: 0 | Normal: 0 | Careful: 0", Color3.fromRGB(180, 190, 220), 18, 10)
+
+makeRowLabel(analyticsScroll, "Rarity distribution:", Color3.fromRGB(160, 175, 230), 16, 11).Font = Enum.Font.GothamBold
+local rarityPercentLabel = makeRowLabel(analyticsScroll, "OG: 0% | Rare: 0% | Common: 0%", Color3.fromRGB(180, 190, 220), 18, 12)
+
+makeRowLabel(analyticsScroll, "Session milestones:", Color3.fromRGB(160, 175, 230), 16, 13).Font = Enum.Font.GothamBold
+local milestonesLabel = makeRowLabel(analyticsScroll, "1h: ○ | 2h: ○ | 3h: ○ | 5h: ○", Color3.fromRGB(180, 190, 220), 18, 14)
+
+makeRowLabel(analyticsScroll, "Backup/Restore:", Color3.fromRGB(160, 175, 230), 16, 15).Font = Enum.Font.GothamBold
+
+local exportConfigBtn = makeActionBtn(analyticsScroll, "Export Config to Clipboard", Color3.fromRGB(60, 100, 120), 28, 16)
+local importConfigBtn = makeActionBtn(analyticsScroll, "Import Config from Clipboard", Color3.fromRGB(60, 100, 120), 28, 17)
+local exportStatsBtn = makeActionBtn(analyticsScroll, "Export Stats to Clipboard", Color3.fromRGB(60, 100, 120), 28, 18)
+local importStatsBtn = makeActionBtn(analyticsScroll, "Import Stats from Clipboard", Color3.fromRGB(60, 100, 120), 28, 19)
+
+exportConfigBtn.MouseButton1Click:Connect(function()
+	local configStr = serializeConfig()
+	copyToClipboard(configStr)
+	addLog("Config exported to clipboard", "Config")
+	showNotif("Config exported!", Color3.fromRGB(100, 180, 255))
+end)
+
+importConfigBtn.MouseButton1Click:Connect(function()
+	local clipboardText = getFromClipboard()
+	if clipboardText and clipboardText ~= "" then
+		if deserializeConfig(clipboardText) then
+			addLog("Config imported from clipboard", "Config")
+			showNotif("Config imported!", Color3.fromRGB(100, 180, 255))
+			refreshBlacklistUI()
+			refreshTargetChecklist()
+		else
+			addLog("Failed to import config", "Error")
+			showNotif("Import failed!", Color3.fromRGB(255, 100, 100))
+		end
+	else
+		showNotif("Clipboard empty!", Color3.fromRGB(255, 150, 100))
+	end
+end)
+
+exportStatsBtn.MouseButton1Click:Connect(function()
+	local statsStr = serializeStats()
+	copyToClipboard(statsStr)
+	addLog("Stats exported to clipboard", "Config")
+	showNotif("Stats exported!", Color3.fromRGB(100, 180, 255))
+end)
+
+importStatsBtn.MouseButton1Click:Connect(function()
+	local clipboardText = getFromClipboard()
+	if clipboardText and clipboardText ~= "" then
+		if deserializeStats(clipboardText) then
+			addLog("Stats imported from clipboard", "Config")
+			showNotif("Stats imported!", Color3.fromRGB(100, 180, 255))
+			refreshStatsUI()
+		else
+			addLog("Failed to import stats", "Error")
+			showNotif("Import failed!", Color3.fromRGB(255, 100, 100))
+		end
+	else
+		showNotif("Clipboard empty!", Color3.fromRGB(255, 150, 100))
+	end
+end)
+
+local function refreshAnalyticsUI()
+	local sessionTime = os.clock() - sessionData.sessionStart
+	local minutes = sessionTime / 60
+	if minutes > 0 then
+		local collectRate = sessionData.collected / minutes
+		local hitRate = sessionData.totalHits / minutes
+		efficiencyLabel.Text = string.format("Collection efficiency: %.2f/min", collectRate)
+		hitEfficiencyLabel.Text = string.format("Hit efficiency: %.2f/min", hitRate)
+	end
+	
+	totalCollectTimeLabel.Text = string.format("Total collection time: %.1fs", sessionData.totalCollectionTime)
+	totalHitTimeLabel.Text = string.format("Total hit time: %.1fs", sessionData.totalHitTime)
+	
+	if sessionData.runsCompleted > 0 then
+		avgCollectTimeLabel.Text = string.format("Avg time per collect: %.2fs", sessionData.totalCollectionTime / sessionData.runsCompleted)
+	else
+		avgCollectTimeLabel.Text = "Avg time per collect: 0s"
+	end
+	
+	if sessionData.hitRunsCompleted > 0 then
+		avgHitTimeLabel.Text = string.format("Avg time per hit: %.2fs", sessionData.totalHitTime / sessionData.hitRunsCompleted)
+	else
+		avgHitTimeLabel.Text = "Avg time per hit: 0s"
+	end
+	
+	local speeds = sessionData.speedsUsed
+	speedBreakdownLabel.Text = string.format("Insane: %s | Fast: %s | Normal: %s | Careful: %s",
+		speeds.Insane and "✓" or "○",
+		speeds.Fast and "✓" or "○",
+		speeds.Normal and "✓" or "○",
+		speeds.Careful and "✓" or "○"
+	)
+	
+	local total = sessionData.rarityCounts.OG + sessionData.rarityCounts.Rare + sessionData.rarityCounts.Common
+	if total > 0 then
+		local ogPct = math.floor((sessionData.rarityCounts.OG / total) * 100)
+		local rarePct = math.floor((sessionData.rarityCounts.Rare / total) * 100)
+		local commonPct = 100 - ogPct - rarePct
+		rarityPercentLabel.Text = string.format("OG: %d%% | Rare: %d%% | Common: %d%%", ogPct, rarePct, commonPct)
+	else
+		rarityPercentLabel.Text = "OG: 0% | Rare: 0% | Common: 0%"
+	end
+	
+	local h = sessionTime / 3600
+	local m1 = h >= 1 and "✓" or "○"
+	local m2 = h >= 2 and "✓" or "○"
+	local m3 = h >= 3 and "✓" or "○"
+	local m5 = h >= 5 and "✓" or "○"
+	milestonesLabel.Text = string.format("1h: %s | 2h: %s | 3h: %s | 5h: %s", m1, m2, m3, m5)
+end
+
+-- ─── TAB SWITCHING ───
+
+local panels = { collectPanel, hitPanel, logPanel, utilPanel, statsPanel, analyticsPanel }
+collectPanel.Position = UDim2.new(0, 0, 0, 0)
+
+local function switchTab(index)
+	if index == currentTab then return end
+	local direction = index > currentTab and 1 or -1
+	local oldPanel = panels[currentTab]
+	local newPanel = panels[index]
+
+	TweenService:Create(oldPanel, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Position = UDim2.new(-direction, 0, 0, 0),
+	}):Play()
+
+	newPanel.Position = UDim2.new(direction, 0, 0, 0)
+	newPanel.Visible = true
+
+	TweenService:Create(newPanel, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0),
+	}):Play()
+
+	for i, tb in ipairs(tabButtons) do
+		if i == index then
+			tb.BackgroundColor3 = TAB_COLORS[i]
+			tb.TextColor3 = Color3.fromRGB(230, 240, 255)
+		else
+			tb.BackgroundColor3 = Color3.fromRGB(28, 35, 65)
+			tb.TextColor3 = Color3.fromRGB(140, 155, 200)
+		end
+	end
+
+	if index == 3 then refreshLog() end
+	if index == 4 then
+		refreshPlayerList()
+		refreshServerInfo()
+		refreshEquipList()
+	end
+	if index == 5 then
+		refreshStatsUI()
+		refreshEncyclopedia()
+	end
+	if index == 6 then
+		refreshAnalyticsUI()
+	end
+	if index == 2 then refreshTargetChecklist() end
+
+	currentTab = index
+end
+
+for i, tb in ipairs(tabButtons) do
+	tb.MouseButton1Click:Connect(function() switchTab(i) end)
+end
+
+tabButtons[1].BackgroundColor3 = TAB_COLORS[1]
+tabButtons[1].TextColor3 = Color3.fromRGB(230, 240, 255)
+
+-- ─── PULSING GLOW ───
+
+local glowIndex = 1
+task.spawn(function()
+	while frame.Parent do
+		local nextIdx = (glowIndex % #glowColors) + 1
+		local tweenProps = { Color = glowColors[nextIdx] }
+		if not cozyConfig.breatheEnabled then
+			tweenProps.Thickness = 3
+		end
+		TweenService:Create(frameStroke, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), tweenProps):Play()
+		task.wait(1.8)
+		local tweenBack = { Color = glowColors[glowIndex] }
+		if not cozyConfig.breatheEnabled then
+			tweenBack.Thickness = 1.5
+		end
+		TweenService:Create(frameStroke, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), tweenBack):Play()
+		task.wait(1.8)
+		glowIndex = nextIdx
+	end
+end)
+
+-- ─── SHIMMER ───
+
+task.spawn(function()
+	while titleLabel.Parent do
+		shimmer.Position = UDim2.new(-0.4, 0, 0, 0)
+		TweenService:Create(shimmer, TweenInfo.new(1.6, Enum.EasingStyle.Linear), {
+			Position = UDim2.new(1.2, 0, 0, 0),
+		}):Play()
+		task.wait(4)
+	end
+end)
+
+-- ─── MINIMIZE ───
+
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	local targetH = minimized and MINI_H or FULL_H
+	TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+		Size = UDim2.new(0, FRAME_W, 0, targetH),
+	}):Play()
+	minBtn.Text = minimized and "+" or "-"
+end)
+
+-- ─── SNOWFLAKES + FIREFLIES ───
+
+local function createSnowflake()
+	local sf = Instance.new("TextLabel")
+	sf.Size = UDim2.new(0, 20, 0, 20)
+	sf.Position = UDim2.new(math.random(), 0, -0.05, 0)
+	sf.BackgroundTransparency = 1
+	sf.Text = "*"
+	sf.TextColor3 = Color3.fromRGB(math.random(200, 255), math.random(200, 255), 255)
+	sf.TextSize = math.random(10, 22)
+	sf.Font = Enum.Font.GothamBold
+	sf.ZIndex = 2
+	sf.Parent = snowContainer
+	table.insert(snowflakes, {
+		label = sf,
+		speed = math.random(80, 200) / 1000,
+		drift = (math.random() - 0.5) * 0.002,
+	})
+end
+
+local function createFirefly()
+	local ff = Instance.new("TextLabel")
+	ff.Size = UDim2.new(0, 10, 0, 10)
+	ff.Position = UDim2.new(math.random(), 0, 1.05, 0)
+	ff.BackgroundTransparency = 1
+	ff.Text = "·"
+	ff.TextColor3 = Color3.fromRGB(255, 230, 140)
+	ff.TextSize = math.random(14, 22)
+	ff.Font = Enum.Font.GothamBold
+	ff.ZIndex = 2
+	ff.Parent = fireflyContainer
+	table.insert(fireflies, {
+		label = ff,
+		speed = math.random(30, 90) / 1000,
+		drift = (math.random() - 0.5) * 0.0015,
+	})
+end
+
+local function showWelcomeCard()
+	if cozyConfig.welcomeShown then return end
+	cozyConfig.welcomeShown = true
+	welcomeCard.Visible = true
+	welcomeCard.BackgroundTransparency = 0.3
+	TweenService:Create(welcomeCard, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0.05,
+	}):Play()
+	task.delay(2.8, function()
+		TweenService:Create(welcomeCard, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+		}):Play()
+		task.wait(0.45)
+		welcomeCard.Visible = false
+	end)
+end
+
+local function setGuiOpen(open)
+	guiOpen = open
+	frame.Visible = open
+	overlay.Visible = open
+	snowContainer.Visible = open and cozyConfig.snowEnabled
+	fireflyContainer.Visible = open and cozyConfig.firefliesEnabled
+	if open then
+		showWelcomeCard()
+	else
+		for _, sf in ipairs(snowflakes) do sf.label:Destroy() end
+		snowflakes = {}
+		for _, ff in ipairs(fireflies) do ff.label:Destroy() end
+		fireflies = {}
+		welcomeCard.Visible = false
+	end
+end
+
+task.spawn(function()
+	while moodLabel.Parent do
+		task.wait(8)
+		moodIndex = (moodIndex % #moodMessages) + 1
+		moodLabel.Text = moodMessages[moodIndex]
+	end
+end)
+
+task.spawn(function()
+	while cozyTipLabel.Parent do
+		task.wait(12)
+		tipIndex = (tipIndex % #cozyTips) + 1
+		cozyTipLabel.Text = cozyTips[tipIndex]
+	end
+end)
+
+task.spawn(function()
+	while frame.Parent do
+		if guiOpen and cozyConfig.breatheEnabled and not minimized then
+			TweenService:Create(frameStroke, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				Thickness = 2.8,
+			}):Play()
+			task.wait(2.2)
+			TweenService:Create(frameStroke, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				Thickness = 1.5,
+			}):Play()
+			task.wait(2.2)
+		else
+			task.wait(0.5)
+		end
+	end
+end)
+
+RunService.Heartbeat:Connect(function(dt)
+	if guiOpen then
+		sessionClockLabel.Text = "Session time: " .. formatSessionTime()
+		if cozyConfig.snowEnabled then
+			snowSpawnTimer += dt
+			if snowSpawnTimer >= 0.12 and #snowflakes < 60 then
+				snowSpawnTimer = 0
+				createSnowflake()
+			end
+			for i = #snowflakes, 1, -1 do
+				local sf = snowflakes[i]
+				local pos = sf.label.Position
+				local newY = pos.Y.Scale + sf.speed * dt
+				local newX = pos.X.Scale + sf.drift
+				if newY > 1.05 then
+					sf.label:Destroy()
+					table.remove(snowflakes, i)
+				else
+					sf.label.Position = UDim2.new(newX, 0, newY, 0)
+				end
+			end
+		end
+		if cozyConfig.firefliesEnabled then
+			fireflySpawnTimer += dt
+			if fireflySpawnTimer >= 0.35 and #fireflies < 25 then
+				fireflySpawnTimer = 0
+				createFirefly()
+			end
+			for i = #fireflies, 1, -1 do
+				local ff = fireflies[i]
+				local pos = ff.label.Position
+				local newY = pos.Y.Scale - ff.speed * dt
+				local newX = pos.X.Scale + ff.drift
+				if newY < -0.05 then
+					ff.label:Destroy()
+					table.remove(fireflies, i)
+				else
+					ff.label.Position = UDim2.new(newX, 0, newY, 0)
+				end
+			end
+		end
+	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.RightShift then
+		setGuiOpen(not guiOpen)
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+
+-- ─── HOVER + RIPPLE ON MAIN BUTTONS ───
+
+local function applyHover(btn, nc, hc)
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = hc }):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = nc }):Play()
+	end)
+end
+
+applyHover(collectBtn, Color3.fromRGB(40, 100, 60), Color3.fromRGB(55, 130, 75))
+applyHover(hitBtn, Color3.fromRGB(40, 60, 130), Color3.fromRGB(55, 80, 160))
+applyHover(closeBtn, Color3.fromRGB(200, 60, 60), Color3.fromRGB(230, 80, 80))
+applyHover(safeZoneBtn, Color3.fromRGB(80, 50, 130), Color3.fromRGB(100, 65, 160))
+applyHover(resetCountBtn, Color3.fromRGB(80, 40, 40), Color3.fromRGB(110, 50, 50))
+
+-- ─── FOOTER WATERMARK ───
+
+local footerLabel = Instance.new("TextLabel", frame)
+footerLabel.Size = UDim2.new(1, -10, 0, 18)
+footerLabel.Position = UDim2.new(0, 5, 1, -20)
+footerLabel.BackgroundTransparency = 1
+footerLabel.Text = watermarkMessages[1]
+footerLabel.TextColor3 = Color3.fromRGB(60, 70, 110)
+footerLabel.TextSize = 9
+footerLabel.Font = Enum.Font.Gotham
+footerLabel.TextXAlignment = Enum.TextXAlignment.Center
+footerLabel.ZIndex = 4
+
+task.spawn(function()
+	while footerLabel.Parent do
+		task.wait(6)
+		watermarkIndex = (watermarkIndex % #watermarkMessages) + 1
+		footerLabel.Text = watermarkMessages[watermarkIndex]
+	end
+end)
+
+-- ─── COLLECTOR LOGIC ───
+
+local function runCollector()
+	if running then return end
+	running = true
+	collectBtn.Text = "Running..."
+	collectBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+
+	local delays = SPEED_DELAYS[collectorConfig.speed] or SPEED_DELAYS.Normal
+	local foundThisRun = 0
+	sessionData.lastRunSpeed = collectorConfig.speed
+	sessionData.speedsUsed[collectorConfig.speed] = true
+	local runStartTime = os.clock()
+
+	addLog("Collector started (" .. collectorConfig.speed .. ")", "Info")
+
+	local mobs = workspace:FindFirstChild("Mobs")
+	if not mobs then
+		statusLabel.Text = "Status: Mobs folder not found"
+		addLog("Mobs folder not found", "Error")
+		showNotif("Mobs folder not found!", Color3.fromRGB(255, 100, 100))
+		running = false
+		collectBtn.Text = "Start Collecting"
+		collectBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 60)
+		return
+	end
+
+	repeat
+		for _, mob in ipairs(mobs:GetChildren()) do
+			if not running then break end
+			if foundThisRun >= maxPerRun then break end
+			if shouldCollect(mob) then
+				local rootPart = mob:FindFirstChild("RootPart")
+				if rootPart then
+					local rarity = getRarity(mob)
+					statusLabel.Text = "Status: Found " .. mob.Name .. " [" .. rarity .. "]"
+					addLog("Found: " .. mob.Name .. " [" .. rarity .. "]", "Collect")
+					showNotif("Found: " .. mob.Name, RARITY_COLORS[rarity] or LOG_COLORS.Collect)
+
+					teleportTo(rootPart.CFrame + Vector3.new(0, 3, 0))
+					task.wait(delays.tp)
+					holdE(delays.hold)
+					task.wait(delays.after)
+
+					foundThisRun += 1
+					local prev = sessionData.collected
+					sessionData.collected += 1
+					sessionData.rarityCounts[rarity] = (sessionData.rarityCounts[rarity] or 0) + 1
+					sessionData.brainrotCounts[mob.Name] = (sessionData.brainrotCounts[mob.Name] or 0) + 1
+					playCollectSound()
+
+					if sessionData.collected > sessionData.bestSession then
+						sessionData.bestSession = sessionData.collected
+						addLog("NEW PERSONAL BEST: " .. sessionData.bestSession .. " OGs!", "Record")
+						showNotif("New personal best!", Color3.fromRGB(255, 215, 0))
+					end
+
+					animateCounter(sessionLabel, prev, sessionData.collected, "OGs collected this session: ", "")
+					statusLabel.Text = "Status: Collected " .. foundThisRun .. "/" .. maxPerRun
+					spawnConfetti()
+					if listHas(favoriteBrainrots, mob.Name) then
+						showNotif("Favorite collected: " .. mob.Name .. " ♥", Color3.fromRGB(255, 150, 180))
+					end
+					refreshStatsUI()
+					checkAchievements()
+				end
+			end
+		end
+
+		if foundThisRun < maxPerRun and collectorConfig.loopMode and running then
+			statusLabel.Text = "Status: Loop waiting..."
+			for i = collectorConfig.loopWait, 1, -1 do
+				if not running then break end
+				statusLabel.Text = "Status: Loop in " .. i .. "s"
+				task.wait(1)
+			end
+		end
+	until foundThisRun >= maxPerRun or not running or not collectorConfig.loopMode
+
+	if collectorConfig.autoReturn then
+		statusLabel.Text = "Status: Returning to safe zone"
+		teleportTo(SAFE_ZONE_CFRAME)
+		task.wait(0.4)
+	end
+
+	local doneMsg = "Done! Collected " .. foundThisRun
+	statusLabel.Text = "Status: " .. doneMsg
+	addLog(doneMsg, "Collect")
+	showNotif(doneMsg, Color3.fromRGB(100, 120, 220))
+	sessionData.runsCompleted += 1
+	sessionData.totalCollectionTime += (os.clock() - runStartTime)
+	addRunHistory("Collect", "Found " .. foundThisRun .. " @ " .. collectorConfig.speed)
+	checkAchievements()
+	refreshStatsUI()
+
+	running = false
+	collectBtn.Text = "Start Collecting"
+	collectBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 60)
+end
+
+-- ─── HITTER LOGIC ───
+
+local function runHitter()
+	if hitting then return end
+	hitting = true
+	hitBtn.Text = "Hitting..."
+	hitBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+
+	local targets = resolveHitTargets()
+	if #targets == 0 then
+		hitStatusLabel.Text = "Status: No targets found"
+		addLog("No hit targets found", "Error")
+		showNotif("No targets!", Color3.fromRGB(255, 120, 100))
+		hitting = false
+		hitBtn.Text = "Start Hitting"
+		hitBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 130)
+		return
+	end
+
+	equipBat()
+	local hitsThisRun = 0
+	local runStartTime = os.clock()
+	addLog("Hitter started — " .. #targets .. " target(s)", "Hit")
+
+	for _, target in ipairs(targets) do
+		if not hitting then break end
+		local hrp = target:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hitStatusLabel.Text = "Status: Hitting " .. target.Name
+			addLog("Hitting: " .. target.Name, "Hit")
+			showNotif("Hitting: " .. target.Name, Color3.fromRGB(55, 80, 170))
+
+			local swinging = true
+			local trackConnection = RunService.Heartbeat:Connect(function()
+				if not swinging then return end
+				local updatedHrp = target:FindFirstChild("HumanoidRootPart")
+				local char = player.Character
+				if updatedHrp and char and char:FindFirstChild("HumanoidRootPart") then
+					char.HumanoidRootPart.CFrame = updatedHrp.CFrame * CFrame.new(0, 2, 3)
+				end
+			end)
+
+			for _ = 1, hitterConfig.swingCount do
+				if not hitting then break end
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+				task.wait(0.2)
+				VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+				task.wait(0.5)
+				hitsThisRun += 1
+				sessionData.totalHits += 1
+				playHitSound()
+			end
+
+			swinging = false
+			trackConnection:Disconnect()
+
+			if hitterConfig.cooldownTime > 0 then
+				for cd = hitterConfig.cooldownTime, 1, -1 do
+					if not hitting then break end
+					hitStatusLabel.Text = "Status: Cooldown " .. cd .. "s"
+					task.wait(1)
+				end
+			else
+				task.wait(0.2)
+			end
+		end
+	end
+
+	if collectorConfig.autoReturn then
+		hitStatusLabel.Text = "Status: Returning to safe zone"
+		teleportTo(SAFE_ZONE_CFRAME)
+		task.wait(0.3)
+	end
+
+	if hitsThisRun > sessionData.bestHitSession then
+		sessionData.bestHitSession = hitsThisRun
+		addLog("New best hit session: " .. hitsThisRun, "Record")
+	end
+
+	hitStatusLabel.Text = "Status: Done hitting!"
+	addLog("Done hitting — " .. hitsThisRun .. " swings", "Hit")
+	showNotif("Done hitting!", Color3.fromRGB(55, 80, 170))
+	sessionData.hitRunsCompleted += 1
+	sessionData.totalHitTime += (os.clock() - runStartTime)
+	addRunHistory("Hit", hitsThisRun .. " swings, mode " .. hitterConfig.targetMode)
+	checkAchievements()
+	refreshStatsUI()
+
+	hitting = false
+	hitBtn.Text = "Start Hitting"
+	hitBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 130)
+end
+
+-- ─── CONNECTIONS ───
+
+collectBtn.MouseButton1Click:Connect(function()
+	rippleButton(collectBtn)
+	if not running then
+		task.spawn(runCollector)
+	else
+		running = false
+		statusLabel.Text = "Status: Stopping..."
+		addLog("Collector stop requested", "Info")
+	end
+end)
+
+hitBtn.MouseButton1Click:Connect(function()
+	rippleButton(hitBtn)
+	if not hitting then
+		task.spawn(runHitter)
+	else
+		hitting = false
+		hitStatusLabel.Text = "Status: Stopping..."
+		addLog("Hitter stop requested", "Info")
+	end
+end)
+
+resetCountBtn.MouseButton1Click:Connect(function()
+	rippleButton(resetCountBtn)
+	local prev = sessionData.collected
+	sessionData.collected = 0
+	animateCounter(sessionLabel, prev, 0, "OGs collected this session: ", "")
+	addLog("Session count reset", "Config")
+	showNotif("Session count reset", Color3.fromRGB(180, 100, 100))
+	refreshStatsUI()
+end)
+
+-- ============================================================================
+-- PROXIMITY OG ALERTS
+-- ============================================================================
+
+local PROXIMITY_RANGE = 120
+
+local function scanNearbyOGs()
+	if not proximityAlertsEnabled then return end
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	local pos = char.HumanoidRootPart.Position
+	local mobs = workspace:FindFirstChild("Mobs")
+	if not mobs then return end
+
+	for _, mob in ipairs(mobs:GetChildren()) do
+		if isBrainrot(mob.Name) and getRarity(mob) == "OG" then
+			local root = mob:FindFirstChild("RootPart")
+			if root and (root.Position - pos).Magnitude <= PROXIMITY_RANGE then
+				if not proximityAlerted[mob.Name] then
+					proximityAlerted[mob.Name] = true
+					local meta = getBrainrotMeta(mob.Name)
+					addLog("Nearby OG: " .. mob.Name .. " [" .. meta.tier .. "]", "Collect")
+					showNotif("OG nearby: " .. mob.Name, Color3.fromRGB(255, 215, 0))
+				end
+			else
+				proximityAlerted[mob.Name] = nil
+			end
+		end
+	end
+end
+
+task.spawn(function()
+	while screenGui.Parent do
+		scanNearbyOGs()
+		task.wait(2)
+	end
+end)
+
+-- ============================================================================
+-- SESSION CLOCK + SERVER POLL
+-- ============================================================================
+
+task.spawn(function()
+	while screenGui.Parent do
+		refreshServerInfo()
+		task.wait(10)
+	end
+end)
+
+-- startup
+addLog("Brainrot Collector v" .. VERSION .. " loaded", "Info")
+addLog("Press Right Shift to open", "Info")
+addLog("Tracking " .. #brainrotNames .. " brainrot names", "Info")
+refreshServerInfo()
+refreshStatsUI()
+checkAchievements()

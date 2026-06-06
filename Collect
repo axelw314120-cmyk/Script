@@ -608,68 +608,68 @@ end
 -- ─── BRAINROT METADATA + ACHIEVEMENTS (defined before UI uses them) ───
 
 local BRAINROT_META = {
-	["1x1x1x1"] = { tier = "S", group = "Legends", note = "Classic OG chase target" },
-	["67"] = { tier = "S", group = "Legends", note = "Fan favorite OG" },
-	["Agarrini la Palini"] = { tier = "A", group = "Italian", note = "High demand OG" },
-	["Alessio"] = { tier = "B", group = "Italian", note = "Steady collector pick" },
-	["Anpali Babel"] = { tier = "B", group = "Italian", note = "Solid rare find" },
-	["Antonio"] = { tier = "C", group = "Italian", note = "Common rotation mob" },
-	["Aquanaut"] = { tier = "B", group = "Aquatic", note = "Water-themed brainrot" },
-	["Bambini Crostini"] = { tier = "A", group = "Italian", note = "Popular OG variant" },
-	["Ballerina Cappuccina"] = { tier = "A", group = "Coffee", note = "Dance meme OG" },
-	["Bambu Bambu Sahur"] = { tier = "B", group = "Meme", note = "Sahur family line" },
-	["Bananito Bandito"] = { tier = "B", group = "Fruit", note = "Banana outlaw" },
-	["Bananita Dolphinita"] = { tier = "B", group = "Fruit", note = "Dolphin banana fusion" },
-	["Blackhole Goat"] = { tier = "S", group = "Cosmic", note = "Space goat OG" },
-	["Brr Brr Patapim"] = { tier = "A", group = "Meme", note = "Sound meme classic" },
-	["Bunito Bunito Spinito"] = { tier = "B", group = "Spin", note = "Spinner variant" },
-	["Burbaloni Loliloli"] = { tier = "B", group = "Meme", note = "Chaotic name energy" },
-	["Capi Taco"] = { tier = "B", group = "Food", note = "Taco captain" },
-	["Cappuccino Assassino"] = { tier = "A", group = "Coffee", note = "Assassin barista" },
-	["Eviledon"] = { tier = "S", group = "Dark", note = "Evil edition chase" },
-	["Dug dug dug"] = { tier = "B", group = "Meme", note = "Digging sound meme" },
-	["Espresso Signora"] = { tier = "A", group = "Coffee", note = "Lady espresso" },
-	["Esok Sekolah"] = { tier = "B", group = "School", note = "School meme line" },
-	["Dragon Gingerini"] = { tier = "A", group = "Dragon", note = "Ginger dragon" },
-	["Chillin Chili"] = { tier = "B", group = "Food", note = "Cool pepper" },
-	["Dragon Cannelloni"] = { tier = "A", group = "Dragon", note = "Pasta dragon" },
-	["Chef Crabracadabra"] = { tier = "B", group = "Food", note = "Magic chef crab" },
-	["Extinct Matteo"] = { tier = "S", group = "Matteo", note = "Extinct variant OG" },
-	["Los Bros"] = { tier = "A", group = "Squad", note = "Brother squad" },
-	["Liril\195\172 Laril\195\160"] = { tier = "A", group = "Meme", note = "Iconic lirilà line" },
-	["Las Tralaleritas"] = { tier = "B", group = "Meme", note = "Tralalero family" },
-	["La Karkerkar Combinasion"] = { tier = "A", group = "Combo", note = "Combination boss" },
-	["La Grande Combinasion"] = { tier = "S", group = "Combo", note = "Grande combo OG" },
-	["Karkerkar Kurkur"] = { tier = "B", group = "Combo", note = "Kurkur variant" },
-	["Job Job Job Sahur"] = { tier = "B", group = "Sahur", note = "Working sahur" },
-	["Guest 666"] = { tier = "S", group = "Guest", note = "Cursed guest OG" },
-	["Gangster Footera"] = { tier = "B", group = "Gang", note = "Street footer" },
-	["Fragola La La La"] = { tier = "B", group = "Fruit", note = "Strawberry singer" },
-	["Fluriflura"] = { tier = "B", group = "Meme", note = "Flutter meme" },
-	["Los Tacoritas"] = { tier = "B", group = "Food", note = "Taco squad" },
-	["Los Tralaleritos"] = { tier = "A", group = "Meme", note = "Mini tralalero crew" },
-	["Matteo"] = { tier = "S", group = "Matteo", note = "Core Matteo OG" },
-	["Meowl"] = { tier = "A", group = "Cat", note = "Meow owl hybrid" },
-	["Money Money Puggy"] = { tier = "B", group = "Rich", note = "Cash pug" },
-	["Orangutini Ananassini"] = { tier = "A", group = "Fruit", note = "Orangutan pineapple" },
-	["Noobini Pizzanini"] = { tier = "B", group = "Food", note = "Noob pizza" },
-	["Sigma Boy"] = { tier = "A", group = "Sigma", note = "Sigma male meme" },
-	["Pakrahmatmamat"] = { tier = "B", group = "Meme", note = "Long name classic" },
-	["Spaghetti Tualetti"] = { tier = "B", group = "Food", note = "Bathroom pasta" },
-	["Sigma Girl"] = { tier = "A", group = "Sigma", note = "Sigma female meme" },
-	["Stoppo Luminino"] = { tier = "B", group = "Light", note = "Stop light boy" },
-	["Strawberry Elefanto"] = { tier = "B", group = "Fruit", note = "Berry elephant" },
-	["Strawberry Elephant"] = { tier = "B", group = "Fruit", note = "Alt spelling elephant" },
-	["Swag Soda"] = { tier = "B", group = "Drink", note = "Swag fizzy drink" },
-	["W or L"] = { tier = "A", group = "Meme", note = "Win or loss meme" },
-	["Vulturino Skeletono"] = { tier = "B", group = "Spooky", note = "Skeleton vulture" },
-	["Tung Tung Tung Sahur"] = { tier = "A", group = "Sahur", note = "Drum sahur OG" },
-	["Trulimero Trulicina"] = { tier = "B", group = "Meme", note = "Tralalero cousin" },
-	["Tuff Toucan"] = { tier = "B", group = "Bird", note = "Tough toucan" },
-	["Tim Cheese"] = { tier = "B", group = "Food", note = "Cheese tim" },
-	["Tigrilini Watermelini"] = { tier = "B", group = "Fruit", note = "Tiger watermelon" },
-	["Tictac Sahur"] = { tier = "B", group = "Sahur", note = "Clock sahur" },
-	["Swaggy Bros"] = { tier = "A", group = "Squad", note = "Swag brother duo" },
+	["1x1x1x1"] = { tier = "S", group = "Legends", note = "Classic OG chase target", spawnTip = "Spawns near spawn area", collectTip = "Fast teleport recommended" },
+	["67"] = { tier = "S", group = "Legends", note = "Fan favorite OG", spawnTip = "Rare spawn in central zones", collectTip = "Use Insane speed for best results" },
+	["Agarrini la Palini"] = { tier = "A", group = "Italian", note = "High demand OG", spawnTip = "Italian zone spawns", collectTip = "Watch for rapid despawn" },
+	["Alessio"] = { tier = "B", group = "Italian", note = "Steady collector pick", spawnTip = "Common in Italian sector", collectTip = "Easy to collect on Normal speed" },
+	["Anpali Babel"] = { tier = "B", group = "Italian", note = "Solid rare find", spawnTip = "Patrols Italian border", collectTip = "Quick teleport needed" },
+	["Antonio"] = { tier = "C", group = "Italian", note = "Common rotation mob", spawnTip = "Frequent spawn", collectTip = "Good for practice runs" },
+	["Aquanaut"] = { tier = "B", group = "Aquatic", note = "Water-themed brainrot", spawnTip = "Water zone exclusive", collectTip = "Safe zone nearby" },
+	["Bambini Crostini"] = { tier = "A", group = "Italian", note = "Popular OG variant", spawnTip = "Italian food court", collectTip = "High competition area" },
+	["Ballerina Cappuccina"] = { tier = "A", group = "Coffee", note = "Dance meme OG", spawnTip = "Coffee shop spawns", collectTip = "Moves quickly, use Fast speed" },
+	["Bambu Bambu Sahur"] = { tier = "B", group = "Meme", note = "Sahur family line", spawnTip = "Night spawn preferred", collectTip = "Loop mode recommended" },
+	["Bananito Bandito"] = { tier = "B", group = "Fruit", note = "Banana outlaw", spawnTip = "Fruit garden area", collectTip = "Standard collection method" },
+	["Bananita Dolphinita"] = { tier = "B", group = "Fruit", note = "Dolphin banana fusion", spawnTip = "Beach zone spawns", collectTip = "Watch for water hazards" },
+	["Blackhole Goat"] = { tier = "S", group = "Cosmic", note = "Space goat OG", spawnTip = "Very rare cosmic spawn", collectTip = "Priority target, use Insane" },
+	["Brr Brr Patapim"] = { tier = "A", group = "Meme", note = "Sound meme classic", spawnTip = "Sound zone spawns", collectTip = "Audio cues help locate" },
+	["Bunito Bunito Spinito"] = { tier = "B", group = "Spin", note = "Spinner variant", spawnTip = "Spin arena spawns", collectTip = "Moves in circles, predict path" },
+	["Burbaloni Loliloli"] = { tier = "B", group = "Meme", note = "Chaotic name energy", spawnTip = "Random spawns", collectTip = "Patrol all zones" },
+	["Capi Taco"] = { tier = "B", group = "Food", note = "Taco captain", spawnTip = "Food court spawns", collectTip = "Easy collection target" },
+	["Cappuccino Assassino"] = { tier = "A", group = "Coffee", note = "Assassin barista", spawnTip = "Dark corner spawns", collectTip = "Stealth approach recommended" },
+	["Eviledon"] = { tier = "S", group = "Dark", note = "Evil edition chase", spawnTip = "Dark zone exclusive", collectTip = "Use Careful speed for safety" },
+	["Dug dug dug"] = { tier = "B", group = "Meme", note = "Digging sound meme", spawnTip = "Underground spawns", collectTip = "Listen for digging sounds" },
+	["Espresso Signora"] = { tier = "A", group = "Coffee", note = "Lady espresso", spawnTip = "Coffee shop VIP area", collectTip = "High value target" },
+	["Esok Sekolah"] = { tier = "B", group = "School", note = "School meme line", spawnTip = "School zone spawns", collectTip = "Morning spawn rate higher" },
+	["Dragon Gingerini"] = { tier = "A", group = "Dragon", note = "Ginger dragon", spawnTip = "Dragon lair spawns", collectTip = "Fire breath warning" },
+	["Chillin Chili"] = { tier = "B", group = "Food", note = "Cool pepper", spawnTip = "Spice market spawns", collectTip = "Relaxed movement pattern" },
+	["Dragon Cannelloni"] = { tier = "A", group = "Dragon", note = "Pasta dragon", spawnTip = "Italian dragon hybrid", collectTip = "Rare combo spawn" },
+	["Chef Crabracadabra"] = { tier = "B", group = "Food", note = "Magic chef crab", spawnTip = "Kitchen spawns", collectTip = "Magic effects may confuse" },
+	["Extinct Matteo"] = { tier = "S", group = "Matteo", note = "Extinct variant OG", spawnTip = "Extremely rare spawn", collectTip = "Drop everything for this" },
+	["Los Bros"] = { tier = "A", group = "Squad", note = "Brother squad", spawnTip = "Spawns as duo", collectTip = "Collect both quickly" },
+	["Liril\195\172 Laril\195\160"] = { tier = "A", group = "Meme", note = "Iconic lirilà line", spawnTip = "Music zone spawns", collectTip = "Dances to music rhythm" },
+	["Las Tralaleritas"] = { tier = "B", group = "Meme", note = "Tralalero family", spawnTip = "Dance floor spawns", collectTip = "Group spawn common" },
+	["La Karkerkar Combinasion"] = { tier = "A", group = "Combo", note = "Combination boss", spawnTip = "Combo arena spawn", collectTip = "Requires precise timing" },
+	["La Grande Combinasion"] = { tier = "S", group = "Combo", note = "Grande combo OG", spawnTip = "Ultimate combo spawn", collectTip = "Legendary rarity, prioritize" },
+	["Karkerkar Kurkur"] = { tier = "B", group = "Combo", note = "Kurkur variant", spawnTip = "Combo zone spawns", collectTip = "Mini combo version" },
+	["Job Job Job Sahur"] = { tier = "B", group = "Sahur", note = "Working sahur", spawnTip = "Office zone spawns", collectTip = "Work schedule pattern" },
+	["Guest 666"] = { tier = "S", group = "Guest", note = "Cursed guest OG", spawnTip = "Cursed zone spawn", collectTip = "Spooky effects, stay focused" },
+	["Gangster Footera"] = { tier = "B", group = "Gang", note = "Street footer", spawnTip = "Street zone spawns", collectTip = "Moves in gang formation" },
+	["Fragola La La La"] = { tier = "B", group = "Fruit", note = "Strawberry singer", spawnTip = "Music zone spawns", collectTip = "Sings while moving" },
+	["Fluriflura"] = { tier = "B", group = "Meme", note = "Flutter meme", spawnTip = "Garden zone spawns", collectTip = "Fluttering movement pattern" },
+	["Los Tacoritas"] = { tier = "B", group = "Food", note = "Taco squad", spawnTip = "Taco stand spawns", collectTip = "Group spawn, collect all" },
+	["Los Tralaleritos"] = { tier = "A", group = "Meme", note = "Mini tralalero crew", spawnTip = "Dance zone spawns", collectTip = "Cute variant, popular" },
+	["Matteo"] = { tier = "S", group = "Matteo", note = "Core Matteo OG", spawnTip = "Matteo zone spawns", collectTip = "The original, always collect" },
+	["Meowl"] = { tier = "A", group = "Cat", note = "Meow owl hybrid", spawnTip = "Forest zone spawns", collectTip = "Nocturnal spawn pattern" },
+	["Money Money Puggy"] = { tier = "B", group = "Rich", note = "Cash pug", spawnTip = "Bank zone spawns", collectTip = "Drops coins when collected" },
+	["Orangutini Ananassini"] = { tier = "A", group = "Fruit", note = "Orangutan pineapple", spawnTip = "Jungle zone spawns", collectTip = "Climbs trees, aim high" },
+	["Noobini Pizzanini"] = { tier = "B", group = "Food", note = "Noob pizza", spawnTip = "Pizza place spawns", collectTip = "Beginner friendly target" },
+	["Sigma Boy"] = { tier = "A", group = "Sigma", note = "Sigma male meme", spawnTip = "Sigma zone spawns", collectTip = "Grimace stare movement" },
+	["Pakrahmatmamat"] = { tier = "B", group = "Meme", note = "Long name classic", spawnTip = "Name zone spawns", collectTip = "Name says it all" },
+	["Spaghetti Tualetti"] = { tier = "B", group = "Food", note = "Bathroom pasta", spawnTip = "Restroom zone spawns", collectTip = "Weird but collectible" },
+	["Sigma Girl"] = { tier = "A", group = "Sigma", note = "Sigma female meme", spawnTip = "Sigma zone spawns", collectTip = "Female sigma variant" },
+	["Stoppo Luminino"] = { tier = "B", group = "Light", note = "Stop light boy", spawnTip = "Traffic zone spawns", collectTip = "Stops at red lights" },
+	["Strawberry Elefanto"] = { tier = "B", group = "Fruit", note = "Berry elephant", spawnTip = "Fruit zone spawns", collectTip = "Large target, easy to spot" },
+	["Strawberry Elephant"] = { tier = "B", group = "Fruit", note = "Alt spelling elephant", spawnTip = "Same as Elefanto", collectTip = "Variant name" },
+	["Swag Soda"] = { tier = "B", group = "Drink", note = "Swag fizzy drink", spawnTip = "Vending machine spawns", collectTip = "Refreshing to collect" },
+	["W or L"] = { tier = "A", group = "Meme", note = "Win or loss meme", spawnTip = "Casino zone spawns", collectTip = "50/50 spawn rarity" },
+	["Vulturino Skeletono"] = { tier = "B", group = "Spooky", note = "Skeleton vulture", spawnTip = "Graveyard spawns", collectTip = "Scary but harmless" },
+	["Tung Tung Tung Sahur"] = { tier = "A", group = "Sahur", note = "Drum sahur OG", spawnTip = "Night drum circle", collectTip = "Rhythmic movement" },
+	["Trulimero Trulicina"] = { tier = "B", group = "Meme", note = "Tralalero cousin", spawnTip = "Family reunion spawns", collectTip = "Related to Tralaleros" },
+	["Tuff Toucan"] = { tier = "B", group = "Bird", note = "Tough toucan", spawnTip = "Bird zone spawns", collectTip = "Tough beak, careful approach" },
+	["Tim Cheese"] = { tier = "B", group = "Food", note = "Cheese tim", spawnTip = "Dairy zone spawns", collectTip = "Gouda moves only" },
+	["Tigrilini Watermelini"] = { tier = "B", group = "Fruit", note = "Tiger watermelon", spawnTip = "Fruit tiger hybrid", collectTip = "Striped pattern helps identify" },
+	["Tictac Sahur"] = { tier = "B", group = "Sahur", note = "Clock sahur", spawnTip = "Time zone spawns", collectTip = "Ticks like a clock" },
+	["Swaggy Bros"] = { tier = "A", group = "Squad", note = "Swag brother duo", spawnTip = "Swag zone spawns", collectTip = "Maximum swag points" },
 }
 
 local function getBrainrotMeta(name)
@@ -2075,6 +2075,37 @@ plPad.PaddingTop = UDim.new(0, 4)
 
 local refreshPlBtn = makeActionBtn(utilScroll, "Refresh Player List", Color3.fromRGB(40, 60, 100), 26, 31)
 
+makeRowLabel(utilScroll, "Macro system:", Color3.fromRGB(160, 175, 230), 16, 32).Font = Enum.Font.GothamBold
+
+local macroRecordBtn = makeActionBtn(utilScroll, macroRecording and "Stop Recording" or "Record Macro", Color3.fromRGB(80, 60, 100), 28, 33)
+local macroPlayBtn = makeActionBtn(utilScroll, "Play Macro", Color3.fromRGB(60, 100, 80), 28, 34)
+local macroStopBtn = makeActionBtn(utilScroll, "Stop Playback", Color3.fromRGB(100, 60, 60), 28, 35)
+local macroStatus = makeRowLabel(utilScroll, "Macro: " .. #macroActions .. " actions", Color3.fromRGB(160, 175, 230), 16, 36)
+
+macroRecordBtn.MouseButton1Click:Connect(function()
+	if macroRecording then
+		stopMacroRecording()
+		macroRecordBtn.Text = "Record Macro"
+		macroRecordBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 100)
+	else
+		startMacroRecording()
+		macroRecordBtn.Text = "Stop Recording"
+		macroRecordBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
+	end
+	macroStatus.Text = "Macro: " .. #macroActions .. " actions"
+end)
+
+macroPlayBtn.MouseButton1Click:Connect(function()
+	playMacro()
+end)
+
+macroStopBtn.MouseButton1Click:Connect(function()
+	stopMacroPlayback()
+end)
+
+makeRowLabel(utilScroll, "Performance monitor:", Color3.fromRGB(160, 175, 230), 16, 37).Font = Enum.Font.GothamBold
+local perfLabel = makeRowLabel(utilScroll, "FPS: -- | Ping: --ms | Memory: --MB", Color3.fromRGB(160, 200, 255), 18, 38)
+
 local function refreshPlayerList()
 	for _, c in ipairs(playerListScroll:GetChildren()) do
 		if c:IsA("TextLabel") then c:Destroy() end
@@ -2200,11 +2231,11 @@ local function refreshEncyclopedia()
 	for i, name in ipairs(brainrotNames) do
 		local meta = getBrainrotMeta(name)
 		local row = Instance.new("TextLabel", encyclopediaScroll)
-		row.Size = UDim2.new(1, -8, 0, 28)
+		row.Size = UDim2.new(1, -8, 0, 40)
 		row.BackgroundTransparency = 1
-		row.Text = string.format("%s  [%s|%s]\n  %s", name, meta.tier, meta.group, meta.note)
+		row.Text = string.format("%s  [%s|%s]\n  %s\n  Spawn: %s\n  Tip: %s", name, meta.tier, meta.group, meta.note, meta.spawnTip or "Unknown", meta.collectTip or "Standard")
 		row.TextColor3 = Color3.fromRGB(150, 170, 200)
-		row.TextSize = 9
+		row.TextSize = 8
 		row.Font = Enum.Font.Gotham
 		row.TextXAlignment = Enum.TextXAlignment.Left
 		row.TextYAlignment = Enum.TextYAlignment.Top
@@ -2648,8 +2679,14 @@ task.spawn(function()
 end)
 
 RunService.Heartbeat:Connect(function(dt)
+	updateFPS()
 	if guiOpen then
 		sessionClockLabel.Text = "Session time: " .. formatSessionTime()
+		local avgFPS = getAverageFPS()
+		local ping = getPing()
+		local mem = getMemoryMB()
+		perfLabel.Text = string.format("FPS: %d | Ping: %dms | Memory: %dMB", avgFPS, ping, mem)
+		
 		if cozyConfig.snowEnabled then
 			snowSpawnTimer += dt
 			if snowSpawnTimer >= 0.12 and #snowflakes < 60 then

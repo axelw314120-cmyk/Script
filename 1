@@ -1,0 +1,1103 @@
+-- Services
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Camera = workspace.CurrentCamera
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+
+-- Configuration Variables
+local OWNER_ID = 10972474809 
+local player = Players.LocalPlayer
+
+-- Connection Pool for Cleanup Protocol
+local activeConnectionsPool = {}
+local espCacheRegistry = {}
+
+-- Container Selection (Fallback to PlayerGui if CoreGui is restricted)
+local parentContainer = player:WaitForChild("PlayerGui")
+pcall(function() if CoreGui then parentContainer = CoreGui end end)
+
+-- Destroy existing instance if re-executed
+if parentContainer:FindFirstChild("FatalityPremiumGUI") then
+	parentContainer:FindFirstChild("FatalityPremiumGUI"):Destroy()
+end
+
+-- ==========================================
+-- 1. CORE GUI & NOTIFICATION INFRASTRUCTURE
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FatalityPremiumGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true 
+ScreenGui.Parent = parentContainer
+
+local ClickSound = Instance.new("Sound")
+ClickSound.SoundId = "rbxassetid://6895079853"
+ClickSound.Volume = 0.3
+ClickSound.Parent = ScreenGui
+
+local soundConfig = { ClicksMuted = false }
+local function playClickSFX() 
+	if not soundConfig.ClicksMuted then pcall(function() ClickSound:Play() end) end 
+end
+
+local NotificationFrame = Instance.new("Frame")
+NotificationFrame.Name = "NotificationContainer"
+NotificationFrame.Size = UDim2.new(0, 300, 1, -20)
+NotificationFrame.Position = UDim2.new(1, -310, 0, 10)
+NotificationFrame.BackgroundTransparency = 1
+NotificationFrame.ZIndex = 100
+NotificationFrame.Parent = ScreenGui
+
+local UIListLayout_Notifs = Instance.new("UIListLayout")
+UIListLayout_Notifs.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout_Notifs.VerticalAlignment = Enum.VerticalAlignment.Bottom
+UIListLayout_Notifs.Padding = UDim.new(0, 10)
+UIListLayout_Notifs.Parent = NotificationFrame
+
+local function Notify(title, text, duration)
+	duration = duration or 4
+	local Notif = Instance.new("Frame")
+	Notif.Size = UDim2.new(1, 40, 0, 60)
+	Notif.BackgroundTransparency = 0.05
+	Notif.BackgroundColor3 = Color3.fromRGB(24, 21, 31)
+	Notif.ClipsDescendants = true
+	Notif.Parent = NotificationFrame
+	
+	local NCorner = Instance.new("UICorner"); NCorner.CornerRadius = UDim.new(0, 5); NCorner.Parent = Notif
+	local NStroke = Instance.new("UIStroke"); NStroke.Color = Color3.fromRGB(168, 25, 66); NStroke.Thickness = 1.5; NStroke.Parent = Notif
+	
+	local NTitle = Instance.new("TextLabel")
+	NTitle.Size = UDim2.new(1, -15, 0, 25)
+	NTitle.Position = UDim2.new(0, 15, 0, 5)
+	NTitle.BackgroundTransparency = 1
+	NTitle.Text = title
+	NTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	NTitle.TextSize = 14
+	NTitle.Font = Enum.Font.GothamBold
+	NTitle.TextXAlignment = Enum.TextXAlignment.Left
+	NTitle.Parent = Notif
+	
+	local NText = Instance.new("TextLabel")
+	NText.Size = UDim2.new(1, -15, 0, 25)
+	NText.Position = UDim2.new(0, 15, 0, 25)
+	NText.BackgroundTransparency = 1
+	NText.Text = text
+	NText.TextColor3 = Color3.fromRGB(180, 175, 190)
+	NText.TextSize = 12
+	NText.Font = Enum.Font.Gotham
+	NText.TextWrapped = true
+	NText.TextXAlignment = Enum.TextXAlignment.Left
+	NText.Parent = Notif
+
+	local Line = Instance.new("Frame")
+	Line.Size = UDim2.new(0, 3, 1, 0)
+	Line.BackgroundColor3 = NStroke.Color
+	Line.BorderSizePixel = 0
+	Line.Parent = Notif
+	
+	playClickSFX()
+	TweenService:Create(Notif, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 0, 60)}):Play()
+	
+	task.spawn(function()
+		task.wait(duration)
+		local fade = TweenService:Create(Notif, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 0, 0, 60), BackgroundTransparency = 1})
+		TweenService:Create(NTitle, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+		TweenService:Create(NText, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+		TweenService:Create(NStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
+		fade:Play()
+		fade.Completed:Wait()
+		Notif:Destroy()
+	end)
+end
+
+-- ==========================================
+-- 2. DRAG ENGINE & WATERMARK UTILITIES
+-- ==========================================
+local function makeElementDraggable(dragHandle, targetFrame)
+	local dragging, dragInput, dragStart, startPos
+	local b1 = dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true; dragStart = input.Position; startPos = targetFrame.Position
+			input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+		end
+	end)
+	local c1 = dragHandle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+	end)
+	local c2 = UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			targetFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+	table.insert(activeConnectionsPool, b1); table.insert(activeConnectionsPool, c1); table.insert(activeConnectionsPool, c2)
+end
+
+local Watermark = Instance.new("Frame")
+Watermark.Size = UDim2.new(0, 320, 0, 26)
+Watermark.Position = UDim2.new(1, -330, 0, 15)
+Watermark.BackgroundColor3 = Color3.fromRGB(24, 21, 31)
+Watermark.ZIndex = 10
+Watermark.Visible = false
+Watermark.Parent = ScreenGui
+
+local WMCorner = Instance.new("UICorner"); WMCorner.CornerRadius = UDim.new(0, 4); WMCorner.Parent = Watermark
+local WMStroke = Instance.new("UIStroke"); WMStroke.Color = Color3.fromRGB(168, 25, 66); WMStroke.Thickness = 1.5; WMStroke.Parent = Watermark
+
+local WMLabel = Instance.new("TextLabel")
+WMLabel.Size = UDim2.new(1, -15, 1, 0)
+WMLabel.Position = UDim2.new(0, 0, 0, 0)
+WMLabel.BackgroundTransparency = 1
+WMLabel.Text = "FATALITY.WIN | " .. player.Name .. " | FPS: --"
+WMLabel.TextColor3 = Color3.fromRGB(220, 215, 230)
+WMLabel.Font = Enum.Font.Code
+WMLabel.TextSize = 12
+WMLabel.TextXAlignment = Enum.TextXAlignment.Right
+WMLabel.Parent = Watermark
+
+local WMGradient = Instance.new("UIGradient")
+WMGradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(168, 25, 66)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 15, 40))
+}
+WMGradient.Parent = Watermark
+
+-- ==========================================
+-- 3. MASTER INTERFACE LAYOUT SYSTEM
+-- ==========================================
+local DarkOverlay = Instance.new("Frame")
+DarkOverlay.Name = "DarkOverlay"
+DarkOverlay.Size = UDim2.new(1, 0, 1, 0)
+DarkOverlay.BackgroundColor3 = Color3.fromRGB(8, 6, 12)
+DarkOverlay.BackgroundTransparency = 1 
+DarkOverlay.BorderSizePixel = 0
+DarkOverlay.ZIndex = 1
+DarkOverlay.Parent = ScreenGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 780, 0, 520) 
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 26) 
+MainFrame.BackgroundTransparency = 0.02
+MainFrame.ClipsDescendants = false
+MainFrame.Visible = false 
+MainFrame.ZIndex = 2
+MainFrame.Parent = ScreenGui
+
+local Scanlines = Instance.new("ImageLabel")
+Scanlines.Size = UDim2.new(1, 0, 1, 0)
+Scanlines.BackgroundTransparency = 1
+Scanlines.Image = "rbxassetid://6810237332"
+Scanlines.ImageTransparency = 0.94
+Scanlines.ScaleType = Enum.ScaleType.Tile
+Scanlines.TileSize = UDim2.new(0, 4, 0, 4)
+Scanlines.ZIndex = 2
+Scanlines.Parent = MainFrame
+
+local UICorner = Instance.new("UICorner"); UICorner.CornerRadius = UDim.new(0, 5); UICorner.Parent = MainFrame
+local UIStroke = Instance.new("UIStroke"); UIStroke.Color = Color3.fromRGB(168, 25, 66); UIStroke.Thickness = 1.5; UIStroke.Parent = MainFrame
+
+local HeaderBar = Instance.new("Frame")
+HeaderBar.Name = "HeaderBar"
+HeaderBar.Size = UDim2.new(1, 0, 0, 45)
+HeaderBar.BackgroundTransparency = 1
+HeaderBar.ZIndex = 3
+HeaderBar.Parent = MainFrame
+makeElementDraggable(HeaderBar, MainFrame)
+
+local TitleContainer = Instance.new("Frame")
+TitleContainer.Size = UDim2.new(0, 200, 0, 45)
+TitleContainer.Position = UDim2.new(0, 20, 0, 0)
+TitleContainer.BackgroundTransparency = 1
+TitleContainer.ZIndex = 4
+TitleContainer.Parent = HeaderBar
+
+local function createGlitchLabel(name, color, zIndex, offset)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 1, 0)
+	lbl.Position = offset or UDim2.new(0, 0, 0, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = "FATALITY"
+	lbl.TextColor3 = color
+	lbl.TextSize = 22 
+	lbl.Font = Enum.Font.GothamBold
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.ZIndex = zIndex
+	lbl.Parent = TitleContainer
+	return lbl
+end
+
+local BaseTitle = createGlitchLabel("BaseTitle", Color3.fromRGB(255, 255, 255), 7)
+local RedGlitch = createGlitchLabel("RedGlitch", Color3.fromRGB(235, 45, 85), 5, UDim2.new(0, -1, 0, 0))
+local CyanGlitch = createGlitchLabel("CyanGlitch", Color3.fromRGB(45, 220, 235), 6, UDim2.new(0, 1, 0, 0))
+
+local hbConn = RunService.Heartbeat:Connect(function()
+	if not MainFrame.Visible then return end
+	local t = tick()
+	if math.sin(t * 14) > 0.88 then
+		local driftX = math.sin(t * 120) * 1.2
+		local driftY = math.cos(t * 120) * 0.4
+		RedGlitch.Position = UDim2.new(0, driftX - 1, 0, driftY)
+		CyanGlitch.Position = UDim2.new(0, -driftX + 1, 0, -driftY)
+		RedGlitch.TextTransparency = 0.25
+		CyanGlitch.TextTransparency = 0.25
+	else
+		RedGlitch.TextTransparency = 1; CyanGlitch.TextTransparency = 1
+	end
+end)
+table.insert(activeConnectionsPool, hbConn)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 45, 0, 45)
+CloseButton.Position = UDim2.new(1, -45, 0, 0)
+CloseButton.BackgroundTransparency = 1
+CloseButton.Text = "×"
+CloseButton.TextColor3 = Color3.fromRGB(120, 115, 135)
+CloseButton.TextSize = 24
+CloseButton.Font = Enum.Font.Gotham
+CloseButton.ZIndex = 5
+CloseButton.Parent = HeaderBar
+
+-- Navigation Structure Strip
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -40, 0, 35)
+TabBar.Position = UDim2.new(0, 20, 0, 45)
+TabBar.BackgroundTransparency = 1
+TabBar.ZIndex = 3
+TabBar.Parent = MainFrame
+
+local TabListLayout = Instance.new("UIListLayout")
+TabListLayout.FillDirection = Enum.FillDirection.Horizontal
+TabListLayout.Padding = UDim.new(0, 25)
+TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabListLayout.Parent = TabBar
+
+local PagesContainer = Instance.new("Frame")
+PagesContainer.Size = UDim2.new(1, -40, 1, -100)
+PagesContainer.Position = UDim2.new(0, 20, 0, 85)
+PagesContainer.BackgroundTransparency = 1
+PagesContainer.ZIndex = 3
+PagesContainer.Parent = MainFrame
+
+local Pages = {}
+local TabButtons = {}
+local activeTab = "Visuals"
+
+local function createPage(name, layoutOrder)
+	local pageFrame = Instance.new("Frame")
+	pageFrame.Name = name .. "Page"
+	pageFrame.Size = UDim2.new(1, 0, 1, 0)
+	pageFrame.BackgroundTransparency = 1
+	pageFrame.Visible = (name == "Visuals")
+	pageFrame.Parent = PagesContainer
+	Pages[name] = pageFrame
+
+	local tabBtn = Instance.new("TextButton")
+	tabBtn.Name = name .. "TabBtn"
+	tabBtn.Size = UDim2.new(0, 0, 1, 0)
+	tabBtn.AutomaticSize = Enum.AutomaticSize.X
+	tabBtn.BackgroundTransparency = 1
+	tabBtn.Text = string.upper(name)
+	tabBtn.Font = Enum.Font.GothamBold
+	tabBtn.TextSize = 13
+	tabBtn.TextColor3 = (name == "Visuals") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 115, 135)
+	tabBtn.LayoutOrder = layoutOrder
+	tabBtn.ZIndex = 4
+	tabBtn.Parent = TabBar
+	TabButtons[name] = tabBtn
+end
+
+createPage("Visuals", 1)
+createPage("Misc", 2)
+createPage("Configs", 3)
+createPage("Themes", 4)
+
+local function switchTab(targetName)
+	if activeTab == targetName then return end
+	playClickSFX()
+	for name, page in pairs(Pages) do page.Visible = (name == targetName) end
+	for name, btn in pairs(TabButtons) do
+		btn.TextColor3 = (name == targetName) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 115, 135)
+	end
+	activeTab = targetName
+end
+for name, btn in pairs(TabButtons) do btn.MouseButton1Click:Connect(function() switchTab(name) end) end
+
+-- ==========================================
+-- 4. FRAMEWORK REUSABLE COMPONENT FACTORY
+-- ==========================================
+local flags = {}
+
+local function createGroupbox(title, parent, side)
+	local gb = Instance.new("Frame")
+	gb.Size = UDim2.new(0.5, -5, 0, 0)
+	gb.AutomaticSize = Enum.AutomaticSize.Y
+	gb.Position = (side == "Left") and UDim2.new(0, 0, 0, 0) or UDim2.new(0.5, 5, 0, 0)
+	gb.BackgroundColor3 = Color3.fromRGB(24, 21, 31)
+	gb.Parent = parent
+	
+	local gbCorner = Instance.new("UICorner"); gbCorner.CornerRadius = UDim.new(0, 4); gbCorner.Parent = gb
+	local gbStroke = Instance.new("UIStroke"); gbStroke.Color = Color3.fromRGB(45, 41, 59); gbStroke.Parent = gb
+	
+	local header = Instance.new("Frame")
+	header.Size = UDim2.new(1, 0, 0, 25)
+	header.BackgroundColor3 = Color3.fromRGB(30, 26, 38)
+	header.Parent = gb
+	local hCorner = Instance.new("UICorner"); hCorner.CornerRadius = UDim.new(0, 4); hCorner.Parent = header
+	
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(1, -20, 1, 0)
+	titleLbl.Position = UDim2.new(0, 10, 0, 0)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text = title
+	titleLbl.TextColor3 = Color3.fromRGB(220, 215, 230)
+	titleLbl.Font = Enum.Font.GothamMedium
+	titleLbl.TextSize = 12
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Parent = header
+	
+	local content = Instance.new("Frame")
+	content.Size = UDim2.new(1, -20, 0, 0)
+	content.Position = UDim2.new(0, 10, 0, 35)
+	content.AutomaticSize = Enum.AutomaticSize.Y
+	content.BackgroundTransparency = 1
+	content.Parent = gb
+	
+	local contentList = Instance.new("UIListLayout")
+	contentList.SortOrder = Enum.SortOrder.LayoutOrder
+	contentList.Padding = UDim.new(0, 8)
+	contentList.Parent = content
+	
+	local padding = Instance.new("UIPadding")
+	padding.PaddingBottom = UDim.new(0, 10)
+	padding.Parent = content
+	
+	return content
+end
+
+local function createCheckbox(labelName, flagKey, parentFrame, callback)
+	flags[flagKey] = flags[flagKey] or false
+	
+	local RowFrame = Instance.new("Frame")
+	RowFrame.Size = UDim2.new(1, 0, 0, 20)
+	RowFrame.BackgroundTransparency = 1
+	RowFrame.Parent = parentFrame
+
+	local BoxBtn = Instance.new("TextButton")
+	BoxBtn.Size = UDim2.new(0, 14, 0, 14)
+	BoxBtn.Position = UDim2.new(0, 0, 0, 3)
+	BoxBtn.BackgroundColor3 = flags[flagKey] and UIStroke.Color or Color3.fromRGB(36, 32, 48)
+	BoxBtn.Text = ""
+	BoxBtn.Parent = RowFrame
+
+	local BCorner = Instance.new("UICorner"); BCorner.CornerRadius = UDim.new(0, 3); BCorner.Parent = BoxBtn
+	local BStroke = Instance.new("UIStroke"); BStroke.Color = Color3.fromRGB(58, 53, 74); BStroke.Thickness = 1; BStroke.Parent = BoxBtn
+
+	local Label = Instance.new("TextButton")
+	Label.Size = UDim2.new(1, -25, 1, 0)
+	Label.Position = UDim2.new(0, 25, 0, 0)
+	Label.BackgroundTransparency = 1
+	Label.Text = labelName
+	Label.TextColor3 = flags[flagKey] and Color3.fromRGB(240, 240, 245) or Color3.fromRGB(175, 170, 190)
+	Label.TextSize = 12
+	Label.Font = Enum.Font.Gotham
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = RowFrame
+
+	local function toggle()
+		playClickSFX()
+		flags[flagKey] = not flags[flagKey]
+		if flags[flagKey] then
+			TweenService:Create(BoxBtn, TweenInfo.new(0.2), {BackgroundColor3 = UIStroke.Color}):Play()
+			TweenService:Create(Label, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(240, 240, 245)}):Play()
+		else
+			TweenService:Create(BoxBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(36, 32, 48)}):Play()
+			TweenService:Create(Label, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(175, 170, 190)}):Play()
+		end
+		if callback then callback(flags[flagKey]) end
+	end
+
+	BoxBtn.MouseButton1Click:Connect(toggle); Label.MouseButton1Click:Connect(toggle)
+	
+	local propConn = UIStroke:GetPropertyChangedSignal("Color"):Connect(function()
+		if flags[flagKey] then BoxBtn.BackgroundColor3 = UIStroke.Color end
+	end)
+	table.insert(activeConnectionsPool, propConn)
+end
+
+local function createSlider(labelName, flagKey, parentFrame, min, max, default, callback)
+	flags[flagKey] = default or min
+	
+	local RowFrame = Instance.new("Frame")
+	RowFrame.Size = UDim2.new(1, 0, 0, 35)
+	RowFrame.BackgroundTransparency = 1
+	RowFrame.Parent = parentFrame
+	
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1, -40, 0, 15)
+	Label.BackgroundTransparency = 1
+	Label.Text = labelName
+	Label.TextColor3 = Color3.fromRGB(175, 170, 190)
+	Label.TextSize = 12
+	Label.Font = Enum.Font.Gotham
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = RowFrame
+	
+	local ValueLbl = Instance.new("TextLabel")
+	ValueLbl.Size = UDim2.new(0, 40, 0, 15)
+	ValueLbl.Position = UDim2.new(1, -40, 0, 0)
+	ValueLbl.BackgroundTransparency = 1
+	ValueLbl.Text = tostring(flags[flagKey])
+	ValueLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ValueLbl.TextSize = 12
+	ValueLbl.Font = Enum.Font.Code
+	ValueLbl.TextXAlignment = Enum.TextXAlignment.Right
+	ValueLbl.Parent = RowFrame
+	
+	local SliderBack = Instance.new("TextButton")
+	SliderBack.Size = UDim2.new(1, 0, 0, 6)
+	SliderBack.Position = UDim2.new(0, 0, 0, 22)
+	SliderBack.BackgroundColor3 = Color3.fromRGB(36, 32, 48)
+	SliderBack.Text = ""
+	SliderBack.AutoButtonColor = false
+	SliderBack.Parent = RowFrame
+	local SBCorner = Instance.new("UICorner"); SBCorner.CornerRadius = UDim.new(1, 0); SBCorner.Parent = SliderBack
+	
+	local SliderFill = Instance.new("Frame")
+	local initialFill = math.clamp((flags[flagKey] - min) / (max - min), 0, 1)
+	SliderFill.Size = UDim2.new(initialFill, 0, 1, 0)
+	SliderFill.BackgroundColor3 = UIStroke.Color
+	SliderFill.Parent = SliderBack
+	local SFCorner = Instance.new("UICorner"); SFCorner.CornerRadius = UDim.new(1, 0); SFCorner.Parent = SliderFill
+	
+	local propConn = UIStroke:GetPropertyChangedSignal("Color"):Connect(function() SliderFill.BackgroundColor3 = UIStroke.Color end)
+	table.insert(activeConnectionsPool, propConn)
+	
+	local dragging = false
+	local function updateSlider(input)
+		local relative = math.clamp((input.Position.X - SliderBack.AbsolutePosition.X) / SliderBack.AbsoluteSize.X, 0, 1)
+		local val = math.floor(min + ((max - min) * relative))
+		flags[flagKey] = val
+		ValueLbl.Text = tostring(val)
+		TweenService:Create(SliderFill, TweenInfo.new(0.1), {Size = UDim2.new(relative, 0, 1, 0)}):Play()
+		if callback then callback(val) end
+	end
+	
+	SliderBack.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true; updateSlider(input)
+		end
+	end)
+	
+	local iConn = UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			updateSlider(input)
+		end
+	end)
+	local eConn = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+	end)
+	table.insert(activeConnectionsPool, iConn); table.insert(activeConnectionsPool, eConn)
+end
+
+local function createDropdown(labelName, flagKey, parentFrame, options, callback)
+	flags[flagKey] = options[1]
+	
+	local RowFrame = Instance.new("Frame")
+	RowFrame.Size = UDim2.new(1, 0, 0, 45)
+	RowFrame.BackgroundTransparency = 1
+	RowFrame.Parent = parentFrame
+	
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1, 0, 0, 15)
+	Label.BackgroundTransparency = 1
+	Label.Text = labelName
+	Label.TextColor3 = Color3.fromRGB(175, 170, 190)
+	Label.TextSize = 12
+	Label.Font = Enum.Font.Gotham
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = RowFrame
+	
+	local DropBtn = Instance.new("TextButton")
+	DropBtn.Size = UDim2.new(1, 0, 0, 24)
+	DropBtn.Position = UDim2.new(0, 0, 0, 18)
+	DropBtn.BackgroundColor3 = Color3.fromRGB(36, 32, 48)
+	DropBtn.Text = "  " .. flags[flagKey]
+	DropBtn.TextColor3 = Color3.fromRGB(220, 215, 230)
+	DropBtn.TextSize = 12
+	DropBtn.Font = Enum.Font.Gotham
+	DropBtn.TextXAlignment = Enum.TextXAlignment.Left
+	DropBtn.Parent = RowFrame
+	local DBCorner = Instance.new("UICorner"); DBCorner.CornerRadius = UDim.new(0, 4); DBCorner.Parent = DropBtn
+	local DBStroke = Instance.new("UIStroke"); DBStroke.Color = Color3.fromRGB(58, 53, 74); DBStroke.Parent = DropBtn
+	
+	local Icon = Instance.new("TextLabel")
+	Icon.Size = UDim2.new(0, 20, 1, 0)
+	Icon.Position = UDim2.new(1, -20, 0, 0)
+	Icon.BackgroundTransparency = 1
+	Icon.Text = "▼"
+	Icon.TextColor3 = Color3.fromRGB(175, 170, 190)
+	Icon.TextSize = 14
+	Icon.Font = Enum.Font.Gotham
+	Icon.Parent = DropBtn
+	
+	local DropContainer = Instance.new("Frame")
+	DropContainer.Size = UDim2.new(1, 0, 0, #options * 24)
+	DropContainer.Position = UDim2.new(0, 0, 1, 2)
+	DropContainer.BackgroundColor3 = Color3.fromRGB(30, 26, 38)
+	DropContainer.Visible = false
+	DropContainer.ZIndex = 10
+	DropContainer.Parent = DropBtn
+	local DConCorner = Instance.new("UICorner"); DConCorner.CornerRadius = UDim.new(0, 4); DConCorner.Parent = DropContainer
+	local DConStroke = Instance.new("UIStroke"); DConStroke.Color = Color3.fromRGB(58, 53, 74); DConStroke.Parent = DropContainer
+	
+	local List = Instance.new("UIListLayout")
+	List.SortOrder = Enum.SortOrder.LayoutOrder
+	List.Parent = DropContainer
+	
+	for i, opt in ipairs(options) do
+		local optBtn = Instance.new("TextButton")
+		optBtn.Size = UDim2.new(1, 0, 0, 24)
+		optBtn.BackgroundTransparency = 1
+		optBtn.Text = "  " .. opt
+		optBtn.TextColor3 = Color3.fromRGB(175, 170, 190)
+		optBtn.TextSize = 12
+		optBtn.Font = Enum.Font.Gotham
+		optBtn.TextXAlignment = Enum.TextXAlignment.Left
+		optBtn.ZIndex = 11
+		optBtn.Parent = DropContainer
+		
+		optBtn.MouseEnter:Connect(function() optBtn.TextColor3 = UIStroke.Color end)
+		optBtn.MouseLeave:Connect(function() optBtn.TextColor3 = Color3.fromRGB(175, 170, 190) end)
+		
+		optBtn.MouseButton1Click:Connect(function()
+			playClickSFX()
+			flags[flagKey] = opt
+			DropBtn.Text = "  " .. opt
+			DropContainer.Visible = false
+			Icon.Text = "▼"
+			if callback then callback(opt) end
+		end)
+	end
+	
+	DropBtn.MouseButton1Click:Connect(function()
+		playClickSFX()
+		DropContainer.Visible = not DropContainer.Visible
+		Icon.Text = DropContainer.Visible and "▲" or "▼"
+	end)
+end
+
+-- ==========================================
+-- 5. POPULATING CONTROLS & RENDER HOOKS
+-- ==========================================
+
+-- [VISUALS TAB]
+local VisMain = Instance.new("Frame")
+VisMain.Size = UDim2.new(1, 0, 1, 0)
+VisMain.BackgroundTransparency = 1
+VisMain.Parent = Pages["Visuals"]
+
+local VLeft = createGroupbox("Player ESP Matrix", VisMain, "Left")
+createCheckbox("Master ESP Switch", "ESP_Master", VLeft)
+createCheckbox("2D Bounding Boxes", "Box2D", VLeft)
+createCheckbox("Filled Interior Background", "BoxFill", VLeft)
+createCheckbox("Official Chams Outlines", "Chams", VLeft)
+createCheckbox("Identified Name Tags", "ESP_Names", VLeft)
+createCheckbox("Dynamic Health Bar Indicators", "ESP_Health", VLeft)
+createCheckbox("Snaplines to Vector Pivot", "ESP_Snaplines", VLeft)
+
+-- Skybox Modification Variables
+local activeSkyboxAssets = {}
+local function removeSkybox()
+	for _, asset in ipairs(activeSkyboxAssets) do pcall(function() asset:Destroy() end) end
+	table.clear(activeSkyboxAssets)
+end
+
+local function applySkyboxPreset(preset)
+	removeSkybox()
+	if preset == "Default" then return end
+	
+	local assets = {SkyboxBk="", SkyboxDn="", SkyboxFt="", SkyboxLf="", SkyboxRt="", SkyboxUp=""}
+	if preset == "Galaxy" then
+		assets = {
+			SkyboxBk = "rbxassetid://159454246", SkyboxDn = "rbxassetid://159454226", SkyboxFt = "rbxassetid://159454236",
+			SkyboxLf = "rbxassetid://159454243", SkyboxRt = "rbxassetid://159454231", SkyboxUp = "rbxassetid://159454248"
+		}
+	elseif preset == "Purple Nebula" then
+		assets = {
+			SkyboxBk = "rbxassetid://5752463190", SkyboxDn = "rbxassetid://5752463471", SkyboxFt = "rbxassetid://5752463689",
+			SkyboxLf = "rbxassetid://5752464016", SkyboxRt = "rbxassetid://5752464199", SkyboxUp = "rbxassetid://5752464407"
+		}
+	elseif preset == "Pitch Black" then
+		assets = {
+			SkyboxBk = "rbxassetid://0", SkyboxDn = "rbxassetid://0", SkyboxFt = "rbxassetid://0",
+			SkyboxLf = "rbxassetid://0", SkyboxRt = "rbxassetid://0", SkyboxUp = "rbxassetid://0"
+		}
+	end
+	
+	local sb = Instance.new("Sky")
+	sb.SkyboxBk = assets.SkyboxBk; sb.SkyboxDn = assets.SkyboxDn; sb.SkyboxFt = assets.SkyboxFt
+	sb.SkyboxLf = assets.SkyboxLf; sb.SkyboxRt = assets.SkyboxRt; sb.SkyboxUp = assets.SkyboxUp
+	sb.Parent = Lighting
+	table.insert(activeSkyboxAssets, sb)
+end
+
+local VRight = createGroupbox("World Render Modifiers", VisMain, "Right")
+createCheckbox("Ambient Night Mode Environment", "Vis_Night", VRight, function(state)
+	if state then 
+		Lighting.Ambient = Color3.fromRGB(15, 15, 25)
+		Lighting.OutdoorAmbient = Color3.fromRGB(10, 10, 15)
+	else 
+		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+		Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+	end
+end)
+createCheckbox("Fullbright High-Contrast Lighting", "Vis_Fullbright", VRight, function(state)
+	if state then
+		Lighting.Brightness = 4
+		Lighting.ClockTime = 12
+		Lighting.GlobalShadows = false
+	else
+		Lighting.Brightness = 2
+		Lighting.ClockTime = 14
+		Lighting.GlobalShadows = true
+	end
+end)
+createSlider("Camera Field of View Target", "Vis_FOV", VRight, 70, 130, 70, function(val)
+	Camera.FieldOfView = val
+end)
+createDropdown("Environmental Skybox Profile", "Vis_Skybox", VRight, {"Default", "Galaxy", "Purple Nebula", "Pitch Black"}, function(choice)
+	applySkyboxPreset(choice)
+end)
+
+-- [MISC TAB]
+local MiscMain = Instance.new("Frame")
+MiscMain.Size = UDim2.new(1, 0, 1, 0)
+MiscMain.BackgroundTransparency = 1
+MiscMain.Parent = Pages["Misc"]
+
+local MLeft = createGroupbox("Locomotion & Movement Bypass", MiscMain, "Left")
+createCheckbox("Bhop Automation (Hold Space)", "Misc_Bhop", MLeft)
+createCheckbox("Infinite Multi-Jump Vector", "Misc_InfJump", MLeft)
+createSlider("WalkSpeed Override Multiplier", "Misc_Speed", MLeft, 16, 180, 16)
+createSlider("JumpPower Velocity Multiplier", "Misc_Jump", MLeft, 50, 250, 50)
+
+local bhConn = RunService.RenderStepped:Connect(function()
+	if flags.Misc_Bhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		local char = player.Character
+		if char and char:FindFirstChildOfClass("Humanoid") then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum.FloorMaterial ~= Enum.Material.Air then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+		end
+	end
+	
+	local char = player.Character
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if flags.Misc_Speed and flags.Misc_Speed > 16 then hum.WalkSpeed = flags.Misc_Speed end
+		if flags.Misc_Jump and flags.Misc_Jump > 50 then
+			if hum.UseJumpPower then hum.JumpPower = flags.Misc_Jump else hum.JumpHeight = (flags.Misc_Jump / 7) end
+		end
+	end
+end)
+table.insert(activeConnectionsPool, bhConn)
+
+local ijConn = UserInputService.JumpRequest:Connect(function()
+	if flags.Misc_InfJump then
+		local char = player.Character
+		if char and char:FindFirstChildOfClass("Humanoid") then
+			char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+table.insert(activeConnectionsPool, ijConn)
+
+local MRight = createGroupbox("Core HUD Diagnostics", MiscMain, "Right")
+createCheckbox("Render Stream Overlay Watermark", "Misc_Watermark", MRight, function(state) Watermark.Visible = state end)
+createCheckbox("Mute Frame Audio Interactions", "Misc_AudioMute", MRight, function(state) soundConfig.ClicksMuted = state end)
+
+-- [CONFIGS TAB]
+local ConfigMain = Instance.new("Frame")
+ConfigMain.Size = UDim2.new(1, 0, 1, 0)
+ConfigMain.BackgroundTransparency = 1
+ConfigMain.Parent = Pages["Configs"]
+
+local CLeft = createGroupbox("External Serializer Registry", ConfigMain, "Left")
+
+local function serializeFlagsToString()
+	local dat = {}
+	for k, v in pairs(flags) do
+		if type(v) == "number" or type(v) == "boolean" or type(v) == "string" then dat[k] = v end
+	end
+	local success, result = pcall(function() return HttpService:JSONEncode(dat) end)
+	return success and result or "{}"
+end
+
+local function deserializeFlagsFromString(str)
+	local success, result = pcall(function() return HttpService:JSONDecode(str) end)
+	if success and type(result) == "table" then
+		for k, v in pairs(result) do flags[k] = v end
+		Notify("Configuration Management", "Successfully extracted cloud payload data.", 4)
+	else
+		Notify("Deserializer Malfunction", "Invalid or corrupted clipboard profile string data format detected.", 5)
+	end
+end
+
+local expBtn = Instance.new("TextButton")
+expBtn.Size = UDim2.new(1, 0, 0, 32)
+expBtn.BackgroundColor3 = Color3.fromRGB(36, 32, 48)
+expBtn.Text = "Export Settings String to Clipboard"
+expBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+expBtn.Font = Enum.Font.GothamMedium
+expBtn.TextSize = 12
+expBtn.Parent = CLeft
+local ECorner = Instance.new("UICorner"); ECorner.CornerRadius = UDim.new(0, 4); ECorner.Parent = expBtn
+
+expBtn.MouseButton1Click:Connect(function()
+	playClickSFX()
+	local payload = serializeFlagsToString()
+	if setclipboard then
+		setclipboard(payload)
+		Notify("I/O Matrix Output", "Clipboard memory updated with your encrypted payload configuration parameters.", 4)
+	else
+		Notify("Executor Limitation", "Your execution engine lacks permission access hooks to the global windows setclipboard buffer.", 5)
+	end
+end)
+
+local impBtn = Instance.new("TextButton")
+impBtn.Size = UDim2.new(1, 0, 0, 32)
+impBtn.BackgroundColor3 = Color3.fromRGB(36, 32, 48)
+impBtn.Text = "Import Settings Data From Clipboard"
+impBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+impBtn.Font = Enum.Font.GothamMedium
+impBtn.TextSize = 12
+impBtn.Parent = CLeft
+local ICorner = Instance.new("UICorner"); ICorner.CornerRadius = UDim.new(0, 4); ICorner.Parent = impBtn
+
+impBtn.MouseButton1Click:Connect(function()
+	playClickSFX()
+	if getclipboard then
+		local incomingDataStr = getclipboard()
+		deserializeFlagsFromString(incomingDataStr)
+	else
+		Notify("Executor Limitation", "Your execution engine lacks permission access hooks to the global windows getclipboard stream.", 5)
+	end
+end)
+
+-- [THEMES TAB]
+local ThemesGrid = Instance.new("ScrollingFrame")
+ThemesGrid.Size = UDim2.new(1, 0, 1, 0)
+ThemesGrid.BackgroundTransparency = 1
+ThemesGrid.CanvasSize = UDim2.new(0, 0, 2.2, 0)
+ThemesGrid.ScrollBarThickness = 2
+ThemesGrid.Parent = Pages["Themes"]
+
+local TGLayout = Instance.new("UIGridLayout")
+TGLayout.CellSize = UDim2.new(0, 140, 0, 44) 
+TGLayout.CellPadding = UDim2.new(0, 14, 0, 14)
+TGLayout.Parent = ThemesGrid
+
+local premiumSchemes = {
+	["Fatality Crimson"] = Color3.fromRGB(168, 25, 66),
+	["Gamesense Neon"]  = Color3.fromRGB(150, 200, 60),
+	["Neverlose Cyan"]  = Color3.fromRGB(0, 150, 255),
+	["Onetap Orange"]   = Color3.fromRGB(240, 110, 30),
+	["Aether Purple"]   = Color3.fromRGB(140, 60, 255),
+	["Vaporwave Pink"]  = Color3.fromRGB(255, 80, 180),
+	["Monochrome Gray"] = Color3.fromRGB(180, 180, 185)
+}
+
+for name, color in pairs(premiumSchemes) do
+	local themeBtn = Instance.new("TextButton")
+	themeBtn.Text = name
+	themeBtn.BackgroundColor3 = Color3.fromRGB(30, 26, 38)
+	themeBtn.TextColor3 = Color3.fromRGB(210, 205, 220)
+	themeBtn.Font = Enum.Font.GothamBold
+	themeBtn.TextSize = 11
+	themeBtn.Parent = ThemesGrid
+
+	local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 4); tc.Parent = themeBtn
+	local ts = Instance.new("UIStroke"); ts.Color = color; ts.Thickness = 1; ts.Parent = themeBtn
+
+	themeBtn.MouseButton1Click:Connect(function()
+		playClickSFX()
+		Notify("Visual Matrix Shaders Updated", "Applied skin template preset: " .. name, 3)
+		TweenService:Create(UIStroke, TweenInfo.new(0.3), {Color = color}):Play()
+		TweenService:Create(WMStroke, TweenInfo.new(0.3), {Color = color}):Play()
+		TweenService:Create(WMGradient, TweenInfo.new(0.3), {Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, color),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 15, 40))
+		}}):Play()
+	end)
+end
+
+-- ==========================================
+-- 6. FOV DECOUPLED DYNAMIC ESP ENGINE
+-- ==========================================
+local function createESPAssetsForPlayer(p)
+	if espCacheRegistry[p] then return end
+	
+	local assets = {}
+	
+	local boxContainer = Instance.new("Frame")
+	boxContainer.Name = "ESP_BoxContainer_" .. p.Name
+	boxContainer.BackgroundTransparency = 1
+	boxContainer.Visible = false
+	boxContainer.Parent = ScreenGui
+	assets.BoxContainer = boxContainer
+	
+	local box = Instance.new("Frame")
+	box.Size = UDim2.new(1, 0, 1, 0)
+	box.BackgroundTransparency = 1
+	box.Parent = boxContainer
+	
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = UIStroke.Color
+	stroke.Thickness = 1.5
+	stroke.Parent = box
+	assets.BoxStroke = stroke
+	
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(1, 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	fill.BackgroundTransparency = 1
+	fill.BorderSizePixel = 0
+	fill.Parent = boxContainer
+	assets.InteriorFill = fill
+	
+	local tag = Instance.new("TextLabel")
+	tag.Size = UDim2.new(1, 0, 0, 14)
+	tag.Position = UDim2.new(0, 0, 0, -16)
+	tag.BackgroundTransparency = 1
+	tag.Text = p.Name
+	tag.TextColor3 = Color3.fromRGB(255, 255, 255)
+	tag.TextSize = 11
+	tag.Font = Enum.Font.GothamBold
+	tag.Parent = boxContainer
+	assets.NameTag = tag
+	
+	local healthBar = Instance.new("Frame")
+	healthBar.Size = UDim2.new(0, 3, 1, 0)
+	healthBar.Position = UDim2.new(0, -6, 0, 0)
+	healthBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	healthBar.BorderSizePixel = 0
+	healthBar.Parent = boxContainer
+	assets.HealthBar = healthBar
+	
+	local healthFill = Instance.new("Frame")
+	healthFill.Size = UDim2.new(1, 0, 1, 0)
+	healthFill.BackgroundColor3 = Color3.fromRGB(50, 220, 80)
+	healthFill.BorderSizePixel = 0
+	healthFill.Parent = healthBar
+	assets.HealthFill = healthFill
+	
+	local snapline = Instance.new("Frame")
+	snapline.Name = "ESP_Snapline_" .. p.Name
+	snapline.AnchorPoint = Vector2.new(0.5, 0.5)
+	snapline.BackgroundColor3 = UIStroke.Color
+	snapline.BorderSizePixel = 0
+	snapline.Visible = false
+	snapline.Parent = ScreenGui
+	assets.Snapline = snapline
+	
+	local cHook = UIStroke:GetPropertyChangedSignal("Color"):Connect(function()
+		stroke.Color = UIStroke.Color
+		snapline.BackgroundColor3 = UIStroke.Color
+	end)
+	assets.ColorConnection = cHook
+	
+	espCacheRegistry[p] = assets
+end
+
+local function purgeESPAssetsForPlayer(p)
+	local assets = espCacheRegistry[p]
+	if assets then
+		if assets.BoxContainer then assets.BoxContainer:Destroy() end
+		if assets.Snapline then assets.Snapline:Destroy() end
+		if assets.ColorConnection then assets.ColorConnection:Disconnect() end
+		if p.Character and p.Character:FindFirstChild("FatalityCham") then
+			p.Character.FatalityCham:Destroy()
+		end
+		espCacheRegistry[p] = nil
+	end
+end
+
+-- Server Lifecycle Listener Connections
+table.insert(activeConnectionsPool, Players.PlayerAdded:Connect(createESPAssetsForPlayer))
+table.insert(activeConnectionsPool, Players.PlayerRemoving:Connect(purgeESPAssetsForPlayer))
+for _, p in ipairs(Players:GetPlayers()) do if p ~= player then createESPAssetsForPlayer(p) end end
+
+local espRenderLoop = RunService.RenderStepped:Connect(function()
+	if Watermark.Visible then
+		local ping = tonumber(string.format("%.0f", player:GetNetworkPing() * 1000))
+		WMLabel.Text = string.format("FATALITY.WIN | %s | FPS: %d | Ping: %dms", player.Name, math.floor(1 / RunService.RenderStepped:Wait()), ping)
+	end
+
+	for targetPlayer, assets in pairs(espCacheRegistry) do
+		local char = targetPlayer.Character
+		local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+		local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+		
+		if flags.ESP_Master and hrp and humanoid and humanoid.Health > 0 then
+			-- Calculate position bounds directly from World Points to handle FOV updates perfectly
+			local extentsSize = char:GetExtentsSize()
+			local topWorld = (hrp.CFrame * CFrame.new(0, extentsSize.Y / 2, 0)).Position
+			local bottomWorld = (hrp.CFrame * CFrame.new(0, -extentsSize.Y / 2, 0)).Position
+			
+			local topScreen, tOn = Camera:WorldToViewportPoint(topWorld)
+			local bottomScreen, bOn = Camera:WorldToViewportPoint(bottomWorld)
+			local hrpScreen, hOn = Camera:WorldToViewportPoint(hrp.Position)
+			
+			-- Bounding Boxes Rendering Updates
+			if tOn and bOn and (flags.Box2D or flags.ESP_Names or flags.ESP_Health) then
+				local boxHeight = math.abs(bottomScreen.Y - topScreen.Y)
+				local boxWidth = boxHeight * 0.65
+				
+				assets.BoxContainer.Position = UDim2.new(0, topScreen.X - (boxWidth / 2), 0, topScreen.Y)
+				assets.BoxContainer.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+				assets.BoxContainer.Visible = flags.Box2D
+				
+				assets.InteriorFill.BackgroundTransparency = flags.BoxFill and 0.85 or 1
+				assets.NameTag.Visible = flags.ESP_Names
+				
+				assets.HealthBar.Visible = flags.ESP_Health
+				local hpPct = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+				assets.HealthFill.Size = UDim2.new(1, 0, hpPct, 0)
+				assets.HealthFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
+			else
+				assets.BoxContainer.Visible = false
+			end
+			
+			-- Snapline Matrix Updates
+			if hOn and flags.ESP_Snaplines then
+				local startPoint = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+				local endPoint = Vector2.new(hrpScreen.X, hrpScreen.Y)
+				local dist = (endPoint - startPoint).Magnitude
+				local rads = math.atan2(endPoint.Y - startPoint.Y, endPoint.X - startPoint.X)
+				
+				assets.Snapline.Size = UDim2.new(0, dist, 0, 1.5)
+				assets.Snapline.Position = UDim2.new(0, (startPoint.X + endPoint.X) / 2, 0, (startPoint.Y + endPoint.Y) / 2)
+				assets.Snapline.Rotation = math.deg(rads)
+				assets.Snapline.Visible = true
+			else
+				assets.Snapline.Visible = false
+			end
+			
+			-- High Contrast Real-Time Chams Engine Updates
+			if flags.Chams then
+				local hl = char:FindFirstChild("FatalityCham")
+				if not hl then
+					hl = Instance.new("Highlight"); hl.Name = "FatalityCham"
+					hl.OutlineColor = Color3.fromRGB(255, 255, 255); hl.FillTransparency = 0.4
+					hl.Parent = char
+				end
+				hl.Enabled = true
+				hl.FillColor = UIStroke.Color
+			else
+				local hl = char:FindFirstChild("FatalityCham")
+				if hl then hl.Enabled = false end
+			end
+		else
+			-- Invisible fallback states for dead players or disabled master switches
+			assets.BoxContainer.Visible = false
+			assets.Snapline.Visible = false
+			if char then
+				local hl = char:FindFirstChild("FatalityCham")
+				if hl then hl.Enabled = false end
+			end
+		end
+	end
+end)
+table.insert(activeConnectionsPool, espRenderLoop)
+
+-- ==========================================
+-- 7. MENU VISIBILITY & TERMINATION PANEL
+-- ==========================================
+local isMenuOpen = false
+local isTweening = false
+local animInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function toggleGUI(open)
+	if isTweening then return end
+	isTweening = true
+	if open then
+		MainFrame.Visible = true
+		UserInputService.MouseIconEnabled = true 
+		TweenService:Create(DarkOverlay, animInfo, {BackgroundTransparency = 0.35}):Play()
+		local openTween = TweenService:Create(MainFrame, animInfo, {Size = UDim2.new(0, 780, 0, 520)})
+		openTween:Play(); openTween.Completed:Wait()
+		isMenuOpen = true
+	else
+		TweenService:Create(DarkOverlay, animInfo, {BackgroundTransparency = 1}):Play()
+		local closeTween = TweenService:Create(MainFrame, animInfo, {Size = UDim2.new(0, 780, 0, 0)})
+		closeTween:Play(); closeTween.Completed:Wait()
+		MainFrame.Visible = false
+		isMenuOpen = false
+	end
+	isTweening = false
+end
+
+local inputBeganConn = UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.RightShift then 
+		toggleGUI(not isMenuOpen) 
+	elseif input.KeyCode == Enum.KeyCode.Delete then
+		MainFrame.Visible = false
+		DarkOverlay.BackgroundTransparency = 1
+		isMenuOpen = false
+		Notify("Security Protocol Handshake", "All menu overlays structural assets hidden instantly.", 2)
+	end
+end)
+table.insert(activeConnectionsPool, inputBeganConn)
+
+CloseButton.MouseButton1Click:Connect(function()
+	playClickSFX()
+	removeSkybox()
+	for _, conn in ipairs(activeConnectionsPool) do if conn then pcall(function() conn:Disconnect() end) end end
+	for p, _ in pairs(espCacheRegistry) do purgeESPAssetsForPlayer(p) end
+	ScreenGui:Destroy()
+end)
+
+-- ==========================================
+-- 8. INITIALIZE PIPELINE DEPLOYMENT
+-- ==========================================
+local function initiateLoadingScreen()
+	local LoadCanvas = Instance.new("Frame")
+	LoadCanvas.Size = UDim2.new(1, 0, 1, 0)
+	LoadCanvas.BackgroundColor3 = Color3.fromRGB(12, 10, 16)
+	LoadCanvas.ZIndex = 50
+	LoadCanvas.Parent = ScreenGui
+
+	local LoadTitle = Instance.new("TextLabel")
+	LoadTitle.Size = UDim2.new(1, 0, 0, 60); LoadTitle.Position = UDim2.new(0, 0, 0.4, 0); LoadTitle.BackgroundTransparency = 1
+	LoadTitle.Text = "FATALITY"; LoadTitle.TextColor3 = Color3.fromRGB(235, 45, 85); LoadTitle.TextSize = 48; LoadTitle.Font = Enum.Font.GothamBold
+	LoadTitle.ZIndex = 51; LoadTitle.Parent = LoadCanvas
+
+	local ProgressTrack = Instance.new("Frame")
+	ProgressTrack.Size = UDim2.new(0, 300, 0, 4); ProgressTrack.Position = UDim2.new(0.5, -150, 0.5, 30); ProgressTrack.BackgroundColor3 = Color3.fromRGB(30, 26, 38)
+	ProgressTrack.BorderSizePixel = 0; ProgressTrack.ZIndex = 51; ProgressTrack.Parent = LoadCanvas
+
+	local ProgressFill = Instance.new("Frame")
+	ProgressFill.Size = UDim2.new(0, 0, 1, 0); ProgressFill.BackgroundColor3 = Color3.fromRGB(235, 45, 85); ProgressFill.BorderSizePixel = 0
+	ProgressFill.ZIndex = 52; ProgressFill.Parent = ProgressTrack
+
+	local fillTween = TweenService:Create(ProgressFill, TweenInfo.new(2.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)})
+	fillTween:Play(); fillTween.Completed:Wait()
+
+	TweenService:Create(LoadCanvas, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+	TweenService:Create(LoadTitle, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+	
+	task.wait(0.5)
+	LoadCanvas:Destroy()
+	Notify("System Handshake Complete", "Fatality Premium Module Injected. Open panel layout via RightShift.", 5)
+	toggleGUI(true)
+end
+
+task.spawn(initiateLoadingScreen)
